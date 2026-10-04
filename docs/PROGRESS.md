@@ -23,10 +23,13 @@
 
 ## G3 — Acceptance and public-release backlog
 - [x] Review diff and run focused regression suite/build.
-- [ ] Compare live Codex/Claude windows to official account display with matching sample times.
-- [ ] Confirm idle cache, missing fields, collector failure and reset-boundary states.
-- [ ] Verify macOS menu/popover/settings interactions.
-- Deferred gates: live Claude configuration installation, credential-probing removal/change, UI direction, public release/signing. Prepare reviewable changes before seeking the necessary approval.
+- [x] Compare live Codex windows to official client: weekly utilization and reset match; secondary is absent for this account.
+- [x] Confirm idle cache, missing fields and collector failure with synthetic regression cases.
+- [x] Migrate the live known legacy collector, preserve its original field and verify unrelated configuration is unchanged.
+- [x] Open current-source local app and inspect General/Claude settings, unsupported control and stale-source display.
+- [ ] Compare the next real Claude activity sample and resets to the official usage display; observe a real reset boundary.
+- [ ] Verify menu/popover/floating-panel interactions; native automation times out when no settings window is open.
+- Deferred gates: credential-probing removal/change, major UI direction, public release/signing. Prepare reviewable changes before seeking the necessary approval.
 
 ## Verification receipt
 
@@ -36,6 +39,10 @@ G1: 6 provider tests and 4 store tests reproduced failures before fixes. Indepen
 
 G2: 33/33 tests passed. Collector tests execute the generated script with synthetic stdin, space/apostrophe paths, repeated input, alternating idle sessions, malformed input, restoration conflicts and explicit known-legacy migration. History clearing persists an import cutoff across restart. Default trend/menu/retention controls are connected; launch-at-startup is disabled pending support. Independent review found the alternating-session timestamp issue; reproduced and fixed; incremental review found no further P1/P2.
 
-Read-only runtime: Codex CLI refresh succeeds when network access is permitted; official client and CLI return a weekly window with the same reset timestamp. The current account has no secondary window, which is represented as absent. Claude selects stale desktop history and keeps reset unknown. The live legacy statusLine is an unquoted known collector path containing spaces; this explains why the script is not invoked. A compiled migration helper reports the exact legacy form is supported, but dry-run has not changed configuration.
+Runtime: Codex CLI refresh succeeds when network access is permitted; official client and CLI return a weekly window with the same utilization and reset timestamp. The current account has no secondary window, which is represented as absent. Claude selects stale desktop history and keeps reset unknown. The live legacy statusLine was an unquoted known collector path containing spaces; this explains why the script was not invoked. The exact known collector was migrated to a quoted command, its original statusLine saved for restoration, and all unrelated settings compared equal. Claude Code 2.1.218 is installed. Its documented statusLine schema supplies optional five-hour/seven-day usage and Unix reset timestamps: https://code.claude.com/docs/en/statusline
 
-Current acceptance boundaries: source/fixtures verified; live legacy migration, next Claude activity sample and native UI checks remain. Only statusLine changes in the proposed migration, with a saved original field and no auth/permission changes. Never publish personal sample values or credentials in this progress record.
+G2 PR: https://github.com/Win1leven/AI-Quota/pull/3 (stacked on G1). Native settings inspection exposed stale install state after an external configuration change; entering the Claude tab now refreshes the state. The current-source development app is ad-hoc signed and verified locally; this is not a public release artifact.
+
+Current acceptance boundaries: source/fixtures and live configuration migration verified; next Claude activity sample, a real reset boundary and remaining native UI checks remain. Configuration migration changed only statusLine, with a saved original field and no auth/permission changes. Never publish personal sample values or credentials in this progress record.
+
+Next live acceptance: complete a normal response in Claude Code, then refresh Claude in the app. Compare five-hour/seven-day windows and supplied reset dates to Claude's usage display in the same time period. If rate_limits or resets are absent, retain cached/unknown state; do not fabricate them. Leave the session idle and verify the sample timestamp remains fixed while freshness ages. Use Restore Original Config to undo installation if needed; it refuses conflicting statusLine edits.

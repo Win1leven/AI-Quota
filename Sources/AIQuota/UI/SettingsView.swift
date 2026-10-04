@@ -217,6 +217,7 @@ struct SettingsView: View {
             }
             .padding()
         }
+        .onAppear { updateCollectorStatus() }
     }
 
     private func updateCollectorStatus() {

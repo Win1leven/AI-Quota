@@ -21,6 +21,6 @@ See [progress and acceptance](docs/PROGRESS.md) and [project context](docs/PROJE
 
 ## Current limitations
 
-This is a development prototype. Claude collection, cache trust, Codex window completeness, and settings are being repaired in tracked PR slices. Live account parity and desktop interaction checks are separate from unit-test success.
+This is a development prototype. Claude collection, cache trust, Codex window completeness, and settings have been repaired in tracked PR slices. Codex runtime parity is verified; the next real Claude sample and remaining desktop interactions are still acceptance items. See the progress record for precise boundaries.
 
 The existing analytics implementation reads local usage files and uses provider credentials for provider requests. It has not yet been redesigned for the passive Claude collection contract; credential changes require a separate review. Do not interpret the legacy in-app privacy wording as a verified privacy specification.
