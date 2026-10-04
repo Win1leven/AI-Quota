@@ -26,6 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateStatusItemText() }
             .store(in: &cancellables)
+        store.$settings
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusItemText() }
+            .store(in: &cancellables)
         store.$isLoading
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateStatusItemText() }
@@ -143,7 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func handleRefresh() {
-        Task { await store.manualRefreshCodex() }
+        Task { await store.refreshQuotas() }
     }
 
     @objc private func handleFixPanel() {

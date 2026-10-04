@@ -48,7 +48,7 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
         if collectorFileExists() || desktopHistoryFileExists() {
             throw AppError.claudeNoSnapshot
         }
-        return QuotaSnapshot(provider: .claude, windows: [], observedAt: now, receivedAt: now, freshness: .notConfigured)
+        return QuotaSnapshot(provider: .claude, windows: [], observedAt: now, receivedAt: now, freshness: collectorConfigured ? .unknown : .notConfigured)
     }
 
     func isInstalledAndLoggedIn() async -> Bool {
@@ -177,6 +177,14 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
             freshness: freshness,
             source: .claudeDesktop
         )
+    }
+
+    var collectorConfigured: Bool {
+        guard let data = try? Data(contentsOf: settingsPath),
+              let config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let statusLine = config["statusLine"] as? [String: Any],
+              let command = statusLine["command"] as? String else { return false }
+        return command.contains("claude_status_collector")
     }
 
     func settingsExist() -> Bool {

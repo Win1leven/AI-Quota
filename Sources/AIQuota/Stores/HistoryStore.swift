@@ -2,6 +2,8 @@ import Foundation
 
 final class HistoryStore: @unchecked Sendable {
     private var snapshots: [TrendPoint] = []
+    private var retentionDays = 30
+    private var clearedAt: Date?
     private let queue = DispatchQueue(label: "com.aiquota.history", qos: .utility)
     private var lastHeartbeat: [String: Date] = [:]
     private let storageURL: URL?
@@ -26,6 +28,7 @@ final class HistoryStore: @unchecked Sendable {
 
             for window in snapshot.windows {
                 guard let usedPercent = window.usedPercent else { continue }
+                if let clearedAt, window.observedAt <= clearedAt { continue }
 
                 let key = "\(snapshot.provider.rawValue)-\(window.type.rawValue)"
                 let lastBeat = self.lastHeartbeat[key]
@@ -74,9 +77,13 @@ final class HistoryStore: @unchecked Sendable {
                 guard let milliseconds = (sample["t"] as? NSNumber)?.doubleValue,
                       let usage = sample["u"] as? [String: Any] else { continue }
                 let timestamp = Date(timeIntervalSince1970: milliseconds / 1_000)
+                guard milliseconds.isFinite, milliseconds > 0,
+                      timestamp <= Date().addingTimeInterval(60) else { continue }
+                if let clearedAt, timestamp <= clearedAt { continue }
 
                 for (key, type) in [("fh", WindowType.fiveHour), ("sd", WindowType.weekly)] {
-                    guard let used = (usage[key] as? NSNumber)?.doubleValue else { continue }
+                    guard let used = (usage[key] as? NSNumber)?.doubleValue,
+                          used.isFinite, (0...100).contains(used) else { continue }
                     let point = TrendPoint(
                         timestamp: timestamp,
                         usedPercent: used,
@@ -108,26 +115,29 @@ final class HistoryStore: @unchecked Sendable {
         }
     }
 
-    func clearAll() {
-        queue.async { [weak self] in
-            guard let self else { return }
+    func clearAll() throws {
+        try queue.sync {
+            let cutoff = Date()
+            try JSONEncoder().encode(cutoff).write(to: storeURL.appendingPathExtension("clearedAt"), options: .atomic)
+            try JSONEncoder().encode([TrendPoint]()).write(to: storeURL, options: .atomic)
+            self.clearedAt = cutoff
             self.snapshots.removeAll()
             self.lastHeartbeat.removeAll()
-            self.persist()
         }
     }
 
     func setRetentionDays(_ days: Int) {
         queue.async { [weak self] in
             guard let self else { return }
-            let cutoff = Date().addingTimeInterval(-Double(days) * 86_400)
+            self.retentionDays = max(1, days)
+            let cutoff = Date().addingTimeInterval(-Double(self.retentionDays) * 86_400)
             self.snapshots.removeAll { $0.timestamp < cutoff }
             self.persist()
         }
     }
 
     private func trim() {
-        let cutoff = Date().addingTimeInterval(-90 * 86_400)
+        let cutoff = Date().addingTimeInterval(-Double(retentionDays) * 86_400)
         snapshots.removeAll { $0.timestamp < cutoff }
 
         let maxPoints = 10_000
@@ -144,12 +154,17 @@ final class HistoryStore: @unchecked Sendable {
 
     func load() {
         queue.sync {
+            if let data = try? Data(contentsOf: storeURL.appendingPathExtension("clearedAt")) {
+                clearedAt = try? JSONDecoder().decode(Date.self, from: data)
+            }
             guard let data = try? Data(contentsOf: storeURL),
                   let decoded = try? JSONDecoder().decode([TrendPoint].self, from: data) else {
                 return
             }
             var knownIDs = Set<String>()
-            snapshots = decoded.filter { knownIDs.insert($0.id).inserted }
+            snapshots = decoded.filter {
+                ($0.timestamp > (clearedAt ?? .distantPast)) && knownIDs.insert($0.id).inserted
+            }
             if snapshots.count != decoded.count {
                 persist()
             }

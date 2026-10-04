@@ -2,6 +2,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var store: QuotaStore
+    @State private var collectorInstalled = false
+    @State private var collectorHasBackup = false
+    @State private var collectorCanMigrate = false
+    @State private var collectorMessage: String?
+    @State private var showClearHistoryConfirmation = false
+    @State private var historyMessage: String?
+    private let collectorManager = ClaudeCollectorManager()
 
     var body: some View {
         TabView {
@@ -22,6 +29,7 @@ struct SettingsView: View {
         }
         .frame(width: 480, height: 340)
         .fixedSize()
+        .onAppear { updateCollectorStatus() }
     }
 
     private var generalTab: some View {
@@ -39,6 +47,8 @@ struct SettingsView: View {
                 get: { store.settings.launchAtStartup },
                 set: { store.settings.launchAtStartup = $0; store.saveSettings() }
             ))
+            .disabled(true)
+            .help("Launch at startup is not available in this development build.")
 
             Picker("Codex refresh interval:", selection: Binding(
                 get: { store.settings.codexRefreshInterval },
@@ -136,53 +146,92 @@ struct SettingsView: View {
     }
 
     private var claudeTab: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Claude Code Status Line Collector")
-                .font(.headline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Claude Code Status Line Collector")
+                    .font(.headline)
 
-            Text("The collector reads quota data from Claude Code's status line and saves it to a local snapshot file.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                Text("Collects quota after Claude Code activity. Idle samples remain cached; the existing status line is preserved. Requires python3 on PATH.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: store.snapshots[.claude] != nil ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(store.snapshots[.claude] != nil ? .green : .gray)
-                        Text(store.snapshots[.claude] != nil ? "Collector active" : "Collector not configured")
-                            .font(.system(size: 12))
-                    }
-
-                    if store.snapshots[.claude] != nil {
-                        if let snap = store.snapshots[.claude] {
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: collectorInstalled ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(collectorInstalled ? .green : .gray)
+                            Text(collectorInstalled ? "Collector configured" : "Collector not installed / legacy configuration")
+                                .font(.system(size: 12))
+                        }
+                        if let snap = store.snapshots[.claude], !snap.windows.isEmpty {
                             Text("Sampled: \(snap.observedAt.formatted())")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
+                            Text("\(snap.source?.displayName ?? "Source unknown") · \(snap.aged().freshness.displayName)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        } else if collectorInstalled {
+                            Text("Awaiting first sample. Complete a Claude Code response.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
                         }
                     }
+                    .padding(8)
                 }
-                .padding(8)
+
+                HStack(spacing: 8) {
+                    Button("Install / Enable") { installCollector() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    Button("Restore Original Config") {
+                        do {
+                            switch try collectorManager.restoreConfig() {
+                            case .restored: collectorMessage = "Original status line restored. Existing quota samples remain cached."
+                            case .noBackupFound: collectorMessage = "No restore record is available."
+                            }
+                            updateCollectorStatus()
+                            Task { await store.manualRefreshClaude() }
+                        } catch { collectorMessage = error.localizedDescription }
+                    }
+                    .controlSize(.small)
+                    .disabled(!collectorHasBackup)
+                }
+
+                if collectorCanMigrate {
+                    Button("Migrate Legacy Collector") { installCollector(replaceLegacy: true) }
+                        .controlSize(.small)
+                    Text("Migration replaces only the known old collector command and saves it for restoration.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                if let collectorMessage {
+                    Text(collectorMessage)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Configuration file: ~/.claude/settings.json")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
             }
-
-            HStack(spacing: 8) {
-                Button("Install / Enable") {
-                    // Future: trigger ClaudeCollectorManager
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-
-                Button("Restore Original Config") {
-                    // Future: trigger collectManager.restore()
-                }
-                .controlSize(.small)
-            }
-
-            Text("Configuration file: ~/.claude/settings.json")
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
+            .padding()
         }
-        .padding()
+    }
+
+    private func updateCollectorStatus() {
+        collectorInstalled = collectorManager.isCollectorInstalled()
+        collectorHasBackup = collectorManager.hasBackup
+        collectorCanMigrate = collectorManager.canMigrateLegacyCollector
+    }
+
+    private func installCollector(replaceLegacy: Bool = false) {
+        do {
+            try collectorManager.installCollector(replaceLegacyCollector: replaceLegacy)
+            collectorMessage = "Configured. Restart Claude Code, then complete one response to collect quota."
+            updateCollectorStatus()
+            Task { await store.manualRefreshClaude() }
+        } catch { collectorMessage = error.localizedDescription }
     }
 
     private var historyTab: some View {
@@ -205,11 +254,23 @@ struct SettingsView: View {
             .pickerStyle(.radioGroup)
 
             Button(role: .destructive) {
-                // Future: clearHistory()
+                showClearHistoryConfirmation = true
             } label: {
                 Label("Clear All History", systemImage: "trash")
             }
             .controlSize(.small)
+            .confirmationDialog("Clear local trend history? Earlier desktop samples will not be imported again.", isPresented: $showClearHistoryConfirmation) {
+                Button("Clear History", role: .destructive) {
+                    do {
+                        try store.clearHistory()
+                        historyMessage = "Local history cleared. New activity will continue to be recorded."
+                    } catch { historyMessage = error.localizedDescription }
+                }
+            }
+
+            if let historyMessage {
+                Text(historyMessage).font(.system(size: 10)).foregroundStyle(.secondary)
+            }
 
             Text("This clears locally stored trend data but does not affect current quota snapshots.")
                 .font(.system(size: 9))

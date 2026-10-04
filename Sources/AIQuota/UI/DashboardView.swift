@@ -45,6 +45,8 @@ struct DashboardView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
         }
+        .onAppear { selectedTrendRange = store.settings.defaultTrendRange }
+        .onChange(of: store.settings.defaultTrendRange) { selectedTrendRange = $0 }
         .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
         .background(

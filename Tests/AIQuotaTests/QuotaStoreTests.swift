@@ -4,6 +4,19 @@ import Testing
 
 @MainActor
 struct QuotaStoreTests {
+    @Test func lowestMenuModeIncludesWeeklyConstraint() throws {
+        let fixture = try StoreFiles()
+        defer { fixture.remove() }
+        let store = fixture.store()
+        store.settings.menuBarMode = .lowestOnly
+        store.snapshots[.codex] = QuotaSnapshot(provider: .codex, windows: [
+            QuotaWindow(type: .fiveHour, durationMinutes: 300, usedPercent: 20, remainingPercent: nil, resetsAt: nil),
+            QuotaWindow(type: .weekly, durationMinutes: 10080, usedPercent: 95, remainingPercent: nil, resetsAt: nil)
+        ])
+        #expect(store.menuBarText.contains("5%"))
+        #expect(!store.menuBarText.contains("80%"))
+    }
+
     @Test func olderDesktopFallbackCannotReplaceNewerCollectorCache() async throws {
         let fixture = try StoreFiles()
         let claude = try ClaudeFiles()

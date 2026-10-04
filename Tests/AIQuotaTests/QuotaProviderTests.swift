@@ -3,6 +3,17 @@ import Testing
 @testable import AIQuota
 
 struct QuotaProviderTests {
+    @Test func configuredClaudeWaitsForFirstSample() async throws {
+        let fixture = try ClaudeFiles()
+        defer { fixture.remove() }
+        let settings = fixture.root.appendingPathComponent(".claude/settings.json")
+        try FileManager.default.createDirectory(at: settings.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: ["statusLine": ["type": "command", "command": "'/somewhere/claude_status_collector_v2.sh'"]]).write(to: settings)
+        let snapshot = try await fixture.provider.refresh()
+        #expect(snapshot.freshness == .unknown)
+        #expect(snapshot.windows.isEmpty)
+    }
+
     @Test func codexIncludesSecondaryAndPrefersPerLimitEnvelope() throws {
         let data = Data(#"{"id":"2","result":{"rateLimits":{"primary":{"usedPercent":99,"windowDurationMins":300}},"rateLimitsByLimitId":{"codex":{"primary":{"usedPercent":25,"windowDurationMins":300,"resetsAt":1900000000},"secondary":{"usedPercent":60,"windowDurationMins":10080,"resetsAt":1900500000}}}}}"#.utf8)
         let windows = try CodexQuotaProvider().parseWindows(from: data, now: Date())

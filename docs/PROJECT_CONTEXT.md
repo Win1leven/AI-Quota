@@ -29,3 +29,8 @@ Global module index was checked; no existing global Swift quota/collector module
 - Generated collector scripts must be executed against synthetic JSON in temporary paths containing spaces, not only inspected as strings.
 - Installed collectors and bundled binaries can differ from source. Verify each separately and do not reinstall old source over working settings.
 - Keep fixture data synthetic; never copy local credentials or conversation records into tests or GitHub.
+
+- A global last-activity fingerprint fails with multiple idle sessions. Deduplicate activity per session, keep only opaque hashes, and serialize atomic sample updates.
+- Clearing imported history requires a persistent cutoff; otherwise the next refresh or restart silently imports cleared data again.
+- The live legacy status line uses an unquoted path with spaces. Exact known installer forms can be migrated reversibly; custom/compound commands require review.
+- Git transport can fail while GitHub REST works. The fallback uploads the same Git objects and verifies blob/tree/commit hashes before creating a ref/PR.
