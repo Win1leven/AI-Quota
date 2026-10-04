@@ -101,80 +101,50 @@ final class CodexQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
             windows: windows,
             observedAt: now,
             receivedAt: Date(),
-            freshness: windows.isEmpty ? .unavailable : .live
+            freshness: windows.isEmpty ? .unavailable : .live,
+            source: .codexCLI
         )
     }
 
-    private func parseWindows(from data: Data, now: Date) throws -> [QuotaWindow] {
+    func parseWindows(from data: Data, now: Date) throws -> [QuotaWindow] {
         guard let rawString = String(data: data, encoding: .utf8) else { return [] }
 
         var windows: [QuotaWindow] = []
-        let seenPrimaryIDs = Set(["0", "1", "2"])
-
-        for line in rawString.components(separatedBy: .newlines).filter({ !$0.isEmpty }) {
-            guard let lineData = line.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any] else {
-                continue
+        for line in rawString.split(separator: "\n") {
+            guard let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { continue }
+            let responseID = (json["id"] as? String) ?? (json["id"] as? NSNumber)?.stringValue
+            guard responseID == "2" else { continue }
+            if let error = json["error"] as? [String: Any] {
+                throw AppError.codexApiError(error["message"] as? String ?? "Quota request failed")
             }
-
-            // Detect JSON-RPC error responses (e.g. auth failure)
-            if json["error"] != nil, let id = json["id"] as? String, id == "2",
-               let error = json["error"] as? [String: Any],
-               let message = error["message"] as? String {
-                throw AppError.codexApiError(message)
-            }
-
-            if let id = json["id"] as? String, !seenPrimaryIDs.contains(id),
-               let result = json["result"] as? [String: Any] {
-                windows.append(contentsOf: parseRateLimitEnvelope(result, now: now, limitId: id))
-                continue
-            }
-
-            guard let result = json["result"] as? [String: Any] else {
-                continue
-            }
-
-            if let rateLimits = result["rateLimits"] as? [String: Any] {
-                windows.append(contentsOf: parseRateLimitEnvelope(rateLimits, now: now, limitId: "codex"))
-                continue
-            }
-
-            if let byLimitId = result["rateLimitsByLimitId"] as? [String: [String: Any]],
-               let defaultLimit = byLimitId["codex"] {
-                windows.append(contentsOf: parseRateLimitEnvelope(defaultLimit, now: now, limitId: "codex"))
+            guard let result = json["result"] as? [String: Any] else { continue }
+            if let byLimitID = result["rateLimitsByLimitId"] as? [String: [String: Any]],
+               let codex = byLimitID["codex"] {
+                windows.append(contentsOf: parseRateLimitEnvelope(codex, now: now, limitId: "codex"))
+            } else if let legacy = result["rateLimits"] as? [String: Any] {
+                windows.append(contentsOf: parseRateLimitEnvelope(legacy, now: now, limitId: "codex"))
             }
         }
-
         return dedupeCodexWindows(windows)
     }
 
     private func parseRateLimitEnvelope(_ envelope: [String: Any], now: Date, limitId: String) -> [QuotaWindow] {
-        if let limitPrimary = envelope["primary"] as? [String: Any] {
-            let durationMins = limitPrimary["windowDurationMins"] as? Int ?? 0
-            let usedPercent = limitPrimary["usedPercent"] as? Double
-            let resetsAtTimestamp = limitPrimary["resetsAt"] as? TimeInterval
-            let resetDate = resetsAtTimestamp.map { Date(timeIntervalSince1970: $0) }
-            let effectiveID: String
-            if durationMins == 300 {
-                effectiveID = "\(limitId)-five_hour"
-            } else if durationMins == 10080 {
-                effectiveID = "\(limitId)-weekly"
-            } else {
-                effectiveID = "\(limitId)-\(durationMins)m"
-            }
-
-            return [QuotaWindow(
-                id: effectiveID,
-                type: WindowType.from(durationMinutes: durationMins),
-                durationMinutes: durationMins,
-                usedPercent: usedPercent,
+        ["primary", "secondary"].compactMap { key in
+            guard let value = envelope[key] as? [String: Any],
+                  let duration = value["windowDurationMins"] as? Int, duration > 0,
+                  let used = (value["usedPercent"] as? NSNumber)?.doubleValue,
+                  used.isFinite, (0...100).contains(used) else { return nil }
+            let reset = (value["resetsAt"] as? NSNumber)?.doubleValue
+            return QuotaWindow(
+                id: "\(limitId)-\(duration)m",
+                type: WindowType.from(durationMinutes: duration),
+                durationMinutes: duration,
+                usedPercent: used,
                 remainingPercent: nil,
-                resetsAt: resetDate,
+                resetsAt: reset.flatMap { $0.isFinite && $0 > 0 ? Date(timeIntervalSince1970: $0) : nil },
                 observedAt: now
-            )]
+            )
         }
-
-        return []
     }
 
     private func dedupeCodexWindows(_ windows: [QuotaWindow]) -> [QuotaWindow] {
@@ -323,7 +293,7 @@ private final class CodexCommandState: @unchecked Sendable {
         return output.split(separator: "\n").contains { line in
             guard let lineData = line.data(using: .utf8),
                   let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  object["id"] as? String == "2" else {
+                  ((object["id"] as? String) ?? (object["id"] as? NSNumber)?.stringValue) == "2" else {
                 return false
             }
             return object["result"] != nil || object["error"] != nil

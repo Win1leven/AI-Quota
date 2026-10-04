@@ -49,7 +49,7 @@ struct AIQuotaTests {
         let data = Data(#"{"version":2,"samples":[{"t":1784880812179,"org":"test","u":{"fh":14,"sd":5}}]}"#.utf8)
         let snapshot = try ClaudeQuotaProvider().parseDesktopHistory(data: data, now: now)
 
-        #expect(snapshot.freshness == .live)
+        #expect(snapshot.freshness == .cached)
         #expect(snapshot.windows.first(where: { $0.type == .fiveHour })?.usedPercent == 14)
         #expect(snapshot.windows.first(where: { $0.type == .weekly })?.usedPercent == 5)
         #expect(snapshot.windows.allSatisfy { $0.resetsAt == nil })

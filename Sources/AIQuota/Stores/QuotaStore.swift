@@ -14,14 +14,17 @@ final class QuotaStore: ObservableObject {
     private var providers: [ProviderID: QuotaProviderProtocol] = [:]
     private var refreshTimers: [ProviderID: Timer] = [:]
     private var analyticsTimers: [ProviderID: Timer] = [:]
-    private let historyStore = HistoryStore()
+    private var freshnessTimer: Timer?
+    private let historyStore: HistoryStore
 
     private let settingsKey = "com.aiquota.settings"
     private let snapshotKey = "com.aiquota.snapshots"
     private let analyticsKey = "com.aiquota.analytics"
-    private let userDefaults = UserDefaults.standard
+    private let userDefaults: UserDefaults
 
-    init() {
+    init(userDefaults: UserDefaults = .standard, historyStore: HistoryStore = HistoryStore()) {
+        self.userDefaults = userDefaults
+        self.historyStore = historyStore
         loadSettings()
         historyStore.load()
         historyStore.importClaudeDesktopHistory()
@@ -36,7 +39,7 @@ final class QuotaStore: ObservableObject {
         }
         for (key, value) in dict {
             if let id = ProviderID(rawValue: key) {
-                snapshots[id] = value
+                snapshots[id] = value.aged()
             }
         }
     }
@@ -93,15 +96,14 @@ final class QuotaStore: ObservableObject {
 
         do {
             let snapshot = try await refreshWithTimeout(provider: provider, id: id)
-            let currentSnapshot = self.snapshots[id]
-            let freshness = computeFreshness(for: id, snapshot: snapshot, currentSnapshot: currentSnapshot)
-            let updated = QuotaSnapshot(
-                provider: snapshot.provider,
-                windows: snapshot.windows,
-                observedAt: snapshot.observedAt,
-                receivedAt: snapshot.receivedAt,
-                freshness: freshness
-            )
+            if snapshot.windows.isEmpty, snapshots[id]?.windows.isEmpty == false {
+                throw AppError.providerUnavailable(id.displayName)
+            }
+            if let current = snapshots[id], !current.windows.isEmpty,
+               snapshot.observedAt < current.observedAt {
+                throw AppError.olderQuotaSample
+            }
+            let updated = snapshot.aged()
             if id == .claude {
                 historyStore.importClaudeDesktopHistory()
             }
@@ -110,19 +112,19 @@ final class QuotaStore: ObservableObject {
             persistSnapshot(updated)
         } catch {
             if let existing = snapshots[id] {
-                // Keep showing cached data when a refresh fails; only note in freshness.
+                // Keep the last known sample and its source while exposing the failure.
                 let stale = QuotaSnapshot(
                     provider: existing.provider,
                     windows: existing.windows,
                     observedAt: existing.observedAt,
                     receivedAt: existing.receivedAt,
-                    freshness: .stale
+                    freshness: .stale,
+                    source: existing.source
                 )
                 snapshots[id] = stale
-                errors[id] = nil
-            } else {
-                errors[id] = error.localizedDescription
+                persistSnapshot(stale)
             }
+            errors[id] = error.localizedDescription
         }
 
         isLoading.remove(id)
@@ -191,14 +193,14 @@ final class QuotaStore: ObservableObject {
         _ = await (a, b)
     }
 
-    private func computeFreshness(for id: ProviderID, snapshot: QuotaSnapshot, currentSnapshot: QuotaSnapshot?) -> DataFreshness {
-        guard snapshot.windows.contains(where: { $0.usedPercent != nil || $0.remainingPercent != nil }) else {
-            return .unavailable
-        }
-        return snapshot.freshness
-    }
-
     func startPeriodicRefresh() {
+        freshnessTimer?.invalidate()
+        freshnessTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.snapshots = self.snapshots.mapValues { $0.aged() }
+            }
+        }
         for id in ProviderID.allCases {
             let interval: TimeInterval = id == .codex ? settings.codexRefreshInterval : 120
             refreshTimers[id]?.invalidate()
@@ -221,6 +223,8 @@ final class QuotaStore: ObservableObject {
     }
 
     func stopPeriodicRefresh() {
+        freshnessTimer?.invalidate()
+        freshnessTimer = nil
         for timer in refreshTimers.values {
             timer.invalidate()
         }
@@ -243,7 +247,8 @@ final class QuotaStore: ObservableObject {
             let prefix = id == .codex ? "CX" : "CL"
             guard let primary = snapshot.primaryWindow else { return "\(prefix) --" }
             guard let remaining = primary.remainingPercent else { return "\(prefix) --" }
-            return "\(prefix) \(Int(remaining.rounded()))%"
+            let marker = snapshot.aged().freshness == .live ? "" : "~"
+            return "\(prefix) \(marker)\(Int(remaining.rounded()))%"
         }
         if parts.isEmpty {
             return "CX -- · CL --"
@@ -258,7 +263,7 @@ final class QuotaStore: ObservableObject {
                   let rem = primary.remainingPercent else { return nil }
             let prefix = id == .codex ? "Codex" : "Claude"
             let window = primary.type == .weekly ? " (weekly)" : ""
-            return "\(prefix): \(Int(rem.rounded()))% remaining\(window)"
+            return "\(prefix): \(Int(rem.rounded()))% remaining\(window) · \(snap.aged().freshness.displayName) · sampled \(snap.observedAt.formatted())"
         }.joined(separator: " · ")
     }
 
@@ -283,7 +288,7 @@ final class QuotaStore: ObservableObject {
     func checkFreshnessAfterWake() {
         for id in ProviderID.allCases {
             guard let snapshot = snapshots[id] else { continue }
-            let age = Date().timeIntervalSince(snapshot.receivedAt)
+            let age = Date().timeIntervalSince(snapshot.observedAt)
             let threshold: TimeInterval = id == .codex ? 180 : 900
             if age > threshold {
                 Task { await self.refresh(id) }

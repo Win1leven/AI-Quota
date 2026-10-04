@@ -50,6 +50,17 @@ struct ServiceCardView: View {
                     primaryValue(snapshot: snapshot)
                     countdownToReset(snapshot: snapshot)
                     syncStatus(snapshot: snapshot)
+                    if let source = snapshot.source {
+                        Text(source.displayName)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+                    if let error {
+                        Text(error)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -178,7 +189,7 @@ struct ServiceCardView: View {
                     }
                 }
             } else {
-                Text("No data")
+                Text(snapshot.freshness == .notConfigured ? "Configure collector in Settings" : "Waiting for a Claude Code sample")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.3))
             }
@@ -218,7 +229,7 @@ struct ServiceCardView: View {
 
             Spacer()
 
-            Text(timeAgo(snapshot.receivedAt))
+            Text("Sampled \(snapshot.observedAt.ageDescription)")
                 .font(.system(size: 9))
                 .foregroundStyle(.white.opacity(0.25))
         }
@@ -297,7 +308,7 @@ struct ServiceCardView: View {
 
     private func freshnessDescription(_ freshness: DataFreshness) -> String {
         switch freshness {
-        case .live: return "Live"
+        case .live: return provider == .claude ? "Recent sample" : "Live"
         case .cached: return "Cached"
         case .stale: return "Stale"
         case .unavailable: return "Offline"
@@ -364,6 +375,16 @@ struct SegmentedRow: View {
                         .font(.system(size: 8, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.6))
                 }
+            }
+
+            if let reset = window.resetsAt {
+                Text(reset > Date() ? "Resets \(reset.formattedAbsolute())" : "Reset passed · awaiting sample")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Reset time unknown")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: 3) {

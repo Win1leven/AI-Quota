@@ -87,6 +87,20 @@ enum DataFreshness: String, Codable, Sendable {
     }
 }
 
+enum QuotaSource: String, Codable, Sendable {
+    case claudeCollector
+    case claudeDesktop
+    case codexCLI
+
+    var displayName: String {
+        switch self {
+        case .claudeCollector: return "Claude Code sample"
+        case .claudeDesktop: return "Desktop history · reset unknown"
+        case .codexCLI: return "Codex CLI"
+        }
+    }
+}
+
 struct QuotaSnapshot: Identifiable, Codable, Sendable {
     let id: String
     let provider: ProviderID
@@ -94,13 +108,15 @@ struct QuotaSnapshot: Identifiable, Codable, Sendable {
     let observedAt: Date
     let receivedAt: Date
     let freshness: DataFreshness
+    let source: QuotaSource?
 
     init(
         provider: ProviderID,
         windows: [QuotaWindow],
         observedAt: Date = Date(),
         receivedAt: Date = Date(),
-        freshness: DataFreshness = .live
+        freshness: DataFreshness = .live,
+        source: QuotaSource? = nil
     ) {
         self.id = "\(provider.rawValue)-\(receivedAt.timeIntervalSince1970)"
         self.provider = provider
@@ -108,6 +124,25 @@ struct QuotaSnapshot: Identifiable, Codable, Sendable {
         self.observedAt = observedAt
         self.receivedAt = receivedAt
         self.freshness = freshness
+        self.source = source
+    }
+
+    func aged(at now: Date = Date()) -> QuotaSnapshot {
+        let age = now.timeIntervalSince(observedAt)
+        let state: DataFreshness
+        if windows.isEmpty {
+            state = freshness
+        } else if age < -60 {
+            state = .unknown
+        } else if freshness == .stale || age > (provider == .claude ? 1800 : 600) {
+            state = .stale
+        } else if source == .claudeDesktop || freshness == .cached || age > (provider == .claude ? 120 : 180) {
+            state = .cached
+        } else {
+            state = freshness
+        }
+        return QuotaSnapshot(provider: provider, windows: windows, observedAt: observedAt,
+                             receivedAt: receivedAt, freshness: state, source: source)
     }
 
     var primaryWindow: QuotaWindow? {
@@ -250,6 +285,7 @@ struct UsageAnalytics: Codable, Sendable, Identifiable {
 }
 
 enum AppError: LocalizedError {
+    case olderQuotaSample
     case codexNotFound
     case codexNotLoggedIn
     case codexVersionTooOld
@@ -263,6 +299,8 @@ enum AppError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .olderQuotaSample:
+            return "Only an older sample is available. Keeping the last known quota; check the collector in Settings."
         case .codexNotFound:
             return "Codex not found. Install or set the executable path."
         case .codexNotLoggedIn:

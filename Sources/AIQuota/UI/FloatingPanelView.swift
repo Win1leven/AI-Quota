@@ -220,7 +220,7 @@ struct FloatingPanelContentView: View {
                             .frame(width: 6, height: 6)
                         Text("\(Int(rem.rounded()))%")
                             .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(rem < 20 ? Color.orange : rem < 10 ? Color.red : .white.opacity(0.8))
+                            .foregroundStyle(rem < 10 ? Color.red : rem < 20 ? Color.orange : .white.opacity(0.8))
                     }
                 }
             }
@@ -237,8 +237,11 @@ struct FloatingPanelContentView: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(id == .codex ? Color(red: 0.2, green: 0.9, blue: 0.8) : Color(red: 0.3, green: 0.95, blue: 0.6))
 
+                            Text("\(snapshot.aged().freshness.displayName) · \(snapshot.observedAt.ageDescription)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
                             if let primary = snapshot.primaryWindow, let rem = primary.remainingPercent {
-                                QuotaProgressBar(value: rem / 100, accentColor: rem < 20 ? .orange : rem < 10 ? .red : (id == .codex ? Color(red: 0.2, green: 0.9, blue: 0.8) : Color(red: 0.3, green: 0.95, blue: 0.6)))
+                                QuotaProgressBar(value: rem / 100, accentColor: rem < 10 ? .red : rem < 20 ? .orange : (id == .codex ? Color(red: 0.2, green: 0.9, blue: 0.8) : Color(red: 0.3, green: 0.95, blue: 0.6)))
                                     .frame(height: 4)
 
                                 HStack {
@@ -265,7 +268,7 @@ struct FloatingPanelContentView: View {
                 .padding(.horizontal, 8)
 
             if store.snapshots[.codex] != nil {
-                TrendChartPlaceholder()
+                MiniBarChart(dataPoints: store.trendPoints(for: .codex, windowType: store.codexSnapshot?.primaryWindow?.type, range: .fiveHours), accentColor: .cyan)
                     .frame(height: 40)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 4)

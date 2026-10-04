@@ -156,7 +156,7 @@ struct SettingsView: View {
 
                     if store.snapshots[.claude] != nil {
                         if let snap = store.snapshots[.claude] {
-                            Text("Last snapshot: \(snap.receivedAt.formatted())")
+                            Text("Sampled: \(snap.observedAt.formatted())")
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                         }
@@ -275,7 +275,7 @@ struct SettingsView: View {
             lines.append("\(id.displayName):")
             if let snap = store.snapshots[id] {
                 lines.append("  Status: \(snap.freshness.displayName)")
-                lines.append("  Last received: \(snap.receivedAt.formatted())")
+                lines.append("  Sampled: \(snap.observedAt.formatted())")
                 if let primary = snap.primaryWindow {
                     lines.append("  Primary: \(primary.type.displayName) \(primary.remainingPercent.map { "\(Int($0.rounded()))%" } ?? "N/A")")
                 }
