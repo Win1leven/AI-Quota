@@ -68,7 +68,8 @@ struct ServiceCardView: View {
                 VStack(spacing: 8) {
                     SegmentedProgressBar(
                         segments: snapshot.windows,
-                        accentColor: accentColor
+                        accentColor: accentColor,
+                        awaitingFirstClaudeMessage: snapshot.isAwaitingFirstClaudeMessage
                     )
 
                     VStack(alignment: .leading, spacing: 3) {
@@ -209,6 +210,10 @@ struct ServiceCardView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.white.opacity(0.3))
                 }
+            } else if snapshot.isAwaitingFirstClaudeMessage {
+                Text("5h starts after your first message")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.4))
             } else {
                 Text(snapshot.primaryWindow == nil ? "Unknown" : "Reset time unavailable")
                     .font(.system(size: 11, weight: .medium))
@@ -347,11 +352,13 @@ struct ServiceCardView: View {
 struct SegmentedProgressBar: View {
     let segments: [QuotaWindow]
     let accentColor: Color
+    var awaitingFirstClaudeMessage = false
 
     var body: some View {
         VStack(spacing: 6) {
             ForEach(segments) { window in
-                SegmentedRow(window: window, accentColor: accentColor)
+                SegmentedRow(window: window, accentColor: accentColor,
+                    awaitingFirstMessage: awaitingFirstClaudeMessage && window.type == .fiveHour)
             }
         }
     }
@@ -360,6 +367,7 @@ struct SegmentedProgressBar: View {
 struct SegmentedRow: View {
     let window: QuotaWindow
     let accentColor: Color
+    var awaitingFirstMessage = false
 
     private let totalSegments = 8
 
@@ -379,6 +387,10 @@ struct SegmentedRow: View {
 
             if let reset = window.resetsAt {
                 Text(reset > Date() ? "Resets \(reset.formattedAbsolute())" : "Reset passed · awaiting sample")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            } else if awaitingFirstMessage {
+                Text("Starts after your first message")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             } else {

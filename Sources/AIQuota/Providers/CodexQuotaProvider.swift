@@ -2,6 +2,9 @@ import Foundation
 
 final class CodexQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
     let id = ProviderID.codex
+    private let executableOverride: URL?
+
+    init(executableURL: URL? = nil) { executableOverride = executableURL }
 
     var isAvailable: Bool {
         FileManager.default.isExecutableFile(atPath: codexPath)
@@ -20,6 +23,7 @@ final class CodexQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
     }
 
     private var codexPath: String {
+        if let executableOverride { return executableOverride.path }
         if let customPath = UserDefaults.standard.string(forKey: "codexExecutablePath") {
             return customPath
         }
@@ -91,10 +95,8 @@ final class CodexQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
     }
 
     private func fetchQuota(codexURL: URL) async throws -> QuotaSnapshot {
-        let now = Date()
-
         let rawData = try await runCodexCommand(codexURL: codexURL, arguments: ["app-server", "--listen", "stdio://"])
-
+        let now = Date()
         let windows = try parseWindows(from: rawData, now: now)
         return QuotaSnapshot(
             provider: .codex,
@@ -187,57 +189,73 @@ final class CodexQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
         let stdinPipe = Pipe()
         process.standardOutput = stdoutPipe
         process.standardInput = stdinPipe
-        process.standardError = Pipe()
-
-        try process.run()
+        process.standardError = FileHandle.nullDevice
 
         return try await withCheckedThrowingContinuation { continuation in
             let state = CodexCommandState(continuation: continuation)
-            let outputHandle = stdoutPipe.fileHandleForReading
-            let inputHandle = stdinPipe.fileHandleForWriting
+            let output = stdoutPipe.fileHandleForReading
+            let input = stdinPipe.fileHandleForWriting
+            let queue = DispatchQueue(label: "com.aiquota.codex.transport")
+            let reader = DispatchSource.makeReadSource(fileDescriptor: output.fileDescriptor, queue: queue)
+            _ = fcntl(input.fileDescriptor, F_SETNOSIGPIPE, 1)
+            let flags = fcntl(output.fileDescriptor, F_GETFL)
+            _ = fcntl(output.fileDescriptor, F_SETFL, flags | O_NONBLOCK)
 
-            outputHandle.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                guard !chunk.isEmpty else { return }
-
-                if state.append(chunk) {
-                    handle.readabilityHandler = nil
-                    inputHandle.closeFile()
-                    if process.isRunning {
-                        process.terminate()
-                    }
-                    state.succeed()
-                }
+            @Sendable func cleanUp() {
+                reader.setEventHandler {}
+                reader.cancel()
+                input.closeFile()
+                if process.isRunning { process.terminate() }
             }
 
-            Task.detached {
-                let messages = [
-                    #"{"type":"request","id":"0","method":"initialize","params":{"clientInfo":{"name":"ai-quota","version":"1.0.0"},"capabilities":{}}}"#,
-                    #"{"type":"request","id":"1","method":"account/read","params":{"refreshToken":false}}"#,
-                    #"{"type":"request","id":"2","method":"account/rateLimits/read","params":{}}"#
-                ]
+            reader.setCancelHandler { output.closeFile() }
 
-                for message in messages {
-                    guard !state.isFinished else { return }
-                    let bytes = Array((message + "\n").utf8)
-                    bytes.withUnsafeBufferPointer { buffer in
-                        _ = Darwin.write(inputHandle.fileDescriptor, buffer.baseAddress, buffer.count)
-                    }
-                    try? await Task.sleep(for: .seconds(1))
-                }
-
-                // Give Codex time to flush the final response before sending EOF.
-                try? await Task.sleep(for: .seconds(2))
-                inputHandle.closeFile()
+            @Sendable func fail(_ error: AppError) {
+                if state.failIfPending(error) { cleanUp() }
             }
 
-            DispatchQueue.global().asyncAfter(deadline: .now() + 10) {
-                guard state.failIfPending(AppError.codexTimeout) else { return }
-                outputHandle.readabilityHandler = nil
-                inputHandle.closeFile()
-                if process.isRunning {
-                    process.terminate()
+            @Sendable func send(_ message: String) {
+                guard !state.isFinished else { return }
+                let bytes = Array(message.utf8)
+                let count = bytes.withUnsafeBufferPointer {
+                    Darwin.write(input.fileDescriptor, $0.baseAddress, $0.count)
                 }
+                if count != bytes.count { fail(.codexProcessExited) }
+            }
+
+            reader.setEventHandler {
+                guard !state.isFinished else { return }
+                var buffer = [UInt8](repeating: 0, count: 8192)
+                while !state.isFinished {
+                    let count = Darwin.read(output.fileDescriptor, &buffer, buffer.count)
+                    if count == 0 { fail(.codexProcessExited); return }
+                    if count < 0 {
+                        if errno == EINTR { continue }
+                        if errno != EAGAIN { fail(.codexProcessExited) }
+                        return
+                    }
+                    if state.append(Data(buffer.prefix(count))) {
+                        if state.succeed() { cleanUp() }
+                        return
+                    }
+                    if let result = state.takeInitializationResult() {
+                        switch result {
+                        case .success:
+                            send(#"{"method":"initialized"}"# + "\n" +
+                                #"{"id":"1","method":"account/read","params":{"refreshToken":false}}"# + "\n" +
+                                #"{"id":"2","method":"account/rateLimits/read","params":{}}"# + "\n")
+                        case .failure(let error): fail(error)
+                        }
+                    }
+                }
+            }
+            reader.resume()
+            queue.async {
+                do { try process.run() }
+                catch { fail(.codexProcessExited); return }
+                send(#"{"id":"0","method":"initialize","params":{"clientInfo":{"name":"ai-quota","version":"1.0.0"},"capabilities":{}}}"# + "\n")
+                // All reads, writes, EOF and cleanup use the same queue. stdin stays open.
+                queue.asyncAfter(deadline: .now() + 18) { fail(.codexTimeout) }
             }
         }
     }
@@ -248,6 +266,7 @@ private final class CodexCommandState: @unchecked Sendable {
     private var data = Data()
     private var continuation: CheckedContinuation<Data, Error>?
     private var resolved = false
+    private var initializationHandled = false
 
     init(continuation: CheckedContinuation<Data, Error>) {
         self.continuation = continuation
@@ -265,15 +284,37 @@ private final class CodexCommandState: @unchecked Sendable {
         }
     }
 
-    func succeed() {
+    @discardableResult
+    func succeed() -> Bool {
         let result: (CheckedContinuation<Data, Error>, Data)? = lock.withLock {
             guard !resolved, let continuation else { return nil }
             resolved = true
             self.continuation = nil
             return (continuation, data)
         }
-        guard let result else { return }
+        guard let result else { return false }
         result.0.resume(returning: result.1)
+        return true
+    }
+
+    func takeInitializationResult() -> Result<Void, AppError>? {
+        lock.withLock {
+            guard !resolved, !initializationHandled,
+                  let output = String(data: data, encoding: .utf8) else { return nil }
+            for line in output.split(separator: "\n") {
+                guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                      ((object["id"] as? String) ?? (object["id"] as? NSNumber)?.stringValue) == "0" else { continue }
+                if object["error"] != nil {
+                    initializationHandled = true
+                    return .failure(.codexParseFailed("Initialization was rejected"))
+                }
+                if object["result"] != nil {
+                    initializationHandled = true
+                    return .success(())
+                }
+            }
+            return nil
+        }
     }
 
     @discardableResult

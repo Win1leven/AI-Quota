@@ -61,3 +61,15 @@ Next live acceptance: complete a normal response in Claude Code, then refresh Cl
 Security receipt: secrets stay in memory; only the fixed claude.ai usage GET uses the session cookie. URLSession is ephemeral, disables cookie storage/cache and refuses redirects. Cookie database is opened read-only and queries only sessionKey/lastActiveOrg for .claude.ai. Decryption validates host binding on current Chromium storage. Unknown format, denied Keychain access, missing fields, HTTP rejection and network failure preserve local history or the last good snapshot with a safe recovery message. The private API and desktop cookie format may change; this is a personal development build, not a public release.
 
 Desktop-only acceptance supersedes the earlier requirement to send a Claude Code reply. The statusLine collector remains optional and reversible. No personal sample values, organization IDs or credentials are included in this receipt.
+
+## G5 — Reliable Codex refresh and desktop capsule (2026-10-13)
+
+- [x] Replace fixed RPC delays/early stdin closure with initialize → initialized → account/rate-limit requests. Serialize I/O and cleanup; drain the response before interpreting helper exit.
+- [x] Preserve last successful quota on timeout; distinguish quota-backend failures from authentication failures. Real installed-app Codex refresh succeeds.
+- [x] Confirm Claude's official desktop also waits for the first message when the five-hour window has not started. Explicit zero utilization + null reset is shown as waiting; malformed/missing reset fields remain unknown. A subsequent active desktop window supplies and displays its real reset again.
+- [x] User selects direction B: compact dual-service desktop capsule. Settings → General → Display offers menu bar only, desktop only, or both. Existing saved settings retain their defaults.
+- [x] Capsule shows the smallest known remaining quota across each service's windows; cached/error state has an amber marker. Clicking opens existing details; the existing settings window is accessible with Cmd+comma.
+- [x] Native drag keeps the capsule visible and saves its position; event-to-screen coordinates avoid stale global mouse coordinates. Duplicate compact buttons are replaced by one labeled toggle.
+- [x] Settings window observed after capsule Settings menu interaction; the standard Cmd+comma route also works. Full details expose one labeled compact toggle and a separate close action.
+
+Verification: 31 focused tests in five suites pass, including delayed RPC replies, initialization, response/exit ordering, helper failure, legacy settings decoding, limiting-window selection and explicit-null waiting boundaries. Independent review identified I/O races, published-settings timing and false waiting states; all were reproduced/fixed and reviewed again. No dependency, credential scope, CI or release configuration changes. The tested development app replaces the installed binary with a recoverable application backup. A real reset boundary remains a future acceptance item. Do not publish personal quota samples.

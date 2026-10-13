@@ -42,6 +42,7 @@ struct QuotaWindow: Identifiable, Codable, Sendable {
     let remainingPercent: Double?
     let resetsAt: Date?
     let observedAt: Date
+    let resetStartsAfterMessage: Bool?
 
     init(
         id: String? = nil,
@@ -50,7 +51,8 @@ struct QuotaWindow: Identifiable, Codable, Sendable {
         usedPercent: Double?,
         remainingPercent: Double?,
         resetsAt: Date?,
-        observedAt: Date = Date()
+        observedAt: Date = Date(),
+        resetStartsAfterMessage: Bool = false
     ) {
         if let calculatedRemaining = usedPercent.map({ 100 - $0 }) {
             let clamped = max(0, min(100, calculatedRemaining))
@@ -64,6 +66,7 @@ struct QuotaWindow: Identifiable, Codable, Sendable {
         self.usedPercent = usedPercent.map { max(0, min(100, $0)) }
         self.resetsAt = resetsAt
         self.observedAt = observedAt
+        self.resetStartsAfterMessage = resetStartsAfterMessage
     }
 }
 
@@ -153,6 +156,17 @@ struct QuotaSnapshot: Identifiable, Codable, Sendable {
     var primaryWindow: QuotaWindow? {
         windows.first(where: { $0.type == .fiveHour }) ?? windows.first
     }
+
+    var isAwaitingFirstClaudeMessage: Bool {
+        guard provider == .claude, source == .claudeDesktopSession,
+              let window = windows.first(where: { $0.type == .fiveHour }) else { return false }
+        return window.resetStartsAfterMessage == true
+    }
+
+    var limitingWindow: QuotaWindow? {
+        windows.filter { $0.remainingPercent != nil }
+            .min { ($0.remainingPercent ?? 100) < ($1.remainingPercent ?? 100) }
+    }
 }
 
 struct TrendPoint: Identifiable, Codable, Sendable {
@@ -194,6 +208,8 @@ enum MenuBarMode: String, CaseIterable, Codable, Sendable {
 }
 
 struct AppSettings: Codable {
+    var assistantDisplayMode: AssistantDisplayMode?
+    var effectiveDisplayMode: AssistantDisplayMode { assistantDisplayMode ?? .menuBarOnly }
     var menuBarMode: MenuBarMode = .standard
     var launchAtStartup: Bool = false
     var codexRefreshInterval: TimeInterval = 60
@@ -204,6 +220,12 @@ struct AppSettings: Codable {
     var floatingPanelCompact: Bool = false
 
     static let `default` = AppSettings()
+}
+
+enum AssistantDisplayMode: String, CaseIterable, Codable, Sendable {
+    case menuBarOnly = "Menu bar only"
+    case desktopOnly = "Desktop assistant only"
+    case both = "Menu bar and desktop assistant"
 }
 
 struct DailyUsage: Codable, Sendable, Identifiable {
@@ -296,6 +318,7 @@ enum AppError: LocalizedError {
     case codexNotLoggedIn
     case codexVersionTooOld
     case codexTimeout
+    case codexProcessExited
     case codexParseFailed(String)
     case codexApiError(String)
     case claudeNotConfigured
@@ -315,15 +338,18 @@ enum AppError: LocalizedError {
         case .codexVersionTooOld:
             return "Codex version is too old. Please upgrade."
         case .codexTimeout:
-            return "Codex request timed out."
+            return "Codex refresh timed out. Showing the last saved quota; retry when the connection recovers."
+        case .codexProcessExited:
+            return "Codex helper exited before returning quota. Check the executable in Settings and refresh."
         case .codexParseFailed(let detail):
             return "Failed to parse Codex response: \(detail)"
         case .codexApiError(let msg):
-            if msg.contains("rateLimits") || msg.contains("wham") || msg.contains("usage") {
-                return "Codex quota API unavailable. Run: codex login"
-            }
-            if msg.contains("auth") || msg.contains("token") || msg.contains("unauthorized") {
+            let message = msg.lowercased()
+            if message.contains("auth") || message.contains("token") || message.contains("unauthorized") {
                 return "Codex auth error. Run: codex login"
+            }
+            if message.contains("ratelimits") || message.contains("wham") || message.contains("usage") {
+                return "Codex quota service did not return data. Cached quota is shown when available; retry later."
             }
             return "Codex error: \(msg)"
         case .claudeNotConfigured:

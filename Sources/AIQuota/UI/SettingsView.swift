@@ -34,6 +34,14 @@ struct SettingsView: View {
 
     private var generalTab: some View {
         Form {
+            Picker("Display:", selection: Binding(
+                get: { store.settings.effectiveDisplayMode },
+                set: { store.settings.assistantDisplayMode = $0; store.saveSettings() }
+            )) {
+                ForEach(AssistantDisplayMode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
             Picker("Menu bar display:", selection: Binding(
                 get: { store.settings.menuBarMode },
                 set: { store.settings.menuBarMode = $0; store.saveSettings() }
