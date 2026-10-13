@@ -22,6 +22,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupPopover()
         store.startPeriodicRefresh()
 
+        store.$claudeDesktopSessionEnabled
+            .dropFirst()
+            .sink { [weak self] enabled in
+                self?.registerClaudeProvider(desktopSessionEnabled: enabled)
+                Task { @MainActor [weak self] in await self?.store.manualRefreshClaude() }
+            }
+            .store(in: &cancellables)
+
         store.$snapshots
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateStatusItemText() }
@@ -49,7 +57,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func registerProviders() {
         store.registerProvider(CodexQuotaProvider())
-        store.registerProvider(ClaudeQuotaProvider())
+        registerClaudeProvider(desktopSessionEnabled: store.claudeDesktopSessionEnabled)
+    }
+
+    private func registerClaudeProvider(desktopSessionEnabled: Bool) {
+        let usage: (@Sendable () async throws -> Data)?
+        if desktopSessionEnabled {
+            usage = { @Sendable in try await ClaudeDesktopUsageService().fetchUsage() }
+        } else {
+            usage = nil
+        }
+        store.registerProvider(ClaudeQuotaProvider(desktopUsage: usage))
     }
 
     private func setupStatusItem() {

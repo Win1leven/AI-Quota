@@ -3,6 +3,70 @@ import Testing
 @testable import AIQuota
 
 struct QuotaProviderTests {
+    @Test func desktopSessionWithoutFallbackKeepsActionableError() async throws {
+        let fixture = try ClaudeFiles()
+        defer { fixture.remove() }
+        let provider = ClaudeQuotaProvider(homeDirectory: fixture.root, supportDirectory: fixture.support,
+            desktopUsage: { throw ClaudeDesktopUsageService.DesktopError.keychainLocked })
+        do {
+            _ = try await provider.refresh()
+            Issue.record("Expected protected desktop session error")
+        } catch {
+            #expect(error.localizedDescription == ClaudeDesktopUsageService.DesktopError.keychainLocked.errorDescription)
+        }
+    }
+    @Test func desktopSessionFailurePreservesLocalQuotaWithSafeWarning() async throws {
+        let fixture = try ClaudeFiles()
+        defer { fixture.remove() }
+        let sampled = Date().timeIntervalSince1970 - 30
+        try fixture.history(used: 40, time: sampled)
+        let provider = ClaudeQuotaProvider(homeDirectory: fixture.root, supportDirectory: fixture.support,
+            desktopUsage: { throw ClaudeDesktopUsageService.DesktopError.unauthorized })
+        let sample = try await provider.refresh()
+        #expect(sample.source == .claudeDesktop)
+        #expect(sample.primaryWindow?.usedPercent == 40)
+        #expect(sample.primaryWindow?.resetsAt == nil)
+        #expect(sample.observedAt.timeIntervalSince1970 == sampled)
+        #expect(sample.warning == ClaudeDesktopUsageService.DesktopError.unauthorized.errorDescription)
+        #expect(sample.aged().warning == sample.warning)
+    }
+
+    @Test func desktopResponseWithoutWindowsFallsBackRatherThanInventingReset() async throws {
+        let fixture = try ClaudeFiles()
+        defer { fixture.remove() }
+        try fixture.history(used: 40, time: Date().timeIntervalSince1970 - 30)
+        let provider = ClaudeQuotaProvider(homeDirectory: fixture.root, supportDirectory: fixture.support,
+            desktopUsage: { Data(#"{"five_hour":null,"seven_day":null}"#.utf8) })
+        let sample = try await provider.refresh()
+        #expect(sample.source == .claudeDesktop)
+        #expect(sample.warning != nil)
+        #expect(sample.primaryWindow?.resetsAt == nil)
+    }
+    @Test func desktopSessionUsageSuppliesRealResetsWithoutClaudeCode() async throws {
+        let fixture = try ClaudeFiles()
+        defer { fixture.remove() }
+        try fixture.history(used: 40, time: Date().timeIntervalSince1970 - 20)
+        let provider = ClaudeQuotaProvider(homeDirectory: fixture.root, supportDirectory: fixture.support,
+            desktopUsage: { Data(#"{"five_hour":{"utilization":15,"resets_at":"2030-01-01T12:00:00Z"},"seven_day":{"utilization":45,"resets_at":"2030-01-07T12:00:00Z"}}"#.utf8) })
+        let sample = try await provider.refresh()
+        #expect(sample.windows.count == 2)
+        #expect(sample.primaryWindow?.usedPercent == 15)
+        #expect(sample.primaryWindow?.resetsAt != nil)
+        #expect(sample.source?.rawValue == "claudeDesktopSession")
+    }
+
+    @Test func desktopUsageRejectsInvalidPercentAndKeepsOptionalResetUnknown() throws {
+        let provider = ClaudeQuotaProvider()
+        for value in ["true", "-1", "101"] {
+            #expect(throws: (any Error).self) {
+                try provider.parseOAuthUsage(data: Data("{\"five_hour\":{\"utilization\":\(value)}}".utf8), now: Date())
+            }
+        }
+        let sample = try provider.parseOAuthUsage(data: Data(#"{"seven_day":{"utilization":45,"resets_at":null}}"#.utf8), now: Date())
+        #expect(sample.windows.count == 1)
+        #expect(sample.windows[0].resetsAt == nil)
+    }
+
     @Test func configuredClaudeWaitsForFirstSample() async throws {
         let fixture = try ClaudeFiles()
         defer { fixture.remove() }

@@ -9,6 +9,7 @@ final class QuotaStore: ObservableObject {
     @Published var isLoadingAnalytics: Set<ProviderID> = []
     @Published var errors: [ProviderID: String] = [:]
     @Published var settings: AppSettings = .default
+    @Published private(set) var claudeDesktopSessionEnabled = false
     @Published var isFloatingPanelFixed: Bool = false
 
     private var providers: [ProviderID: QuotaProviderProtocol] = [:]
@@ -24,6 +25,7 @@ final class QuotaStore: ObservableObject {
 
     init(userDefaults: UserDefaults = .standard, historyStore: HistoryStore = HistoryStore()) {
         self.userDefaults = userDefaults
+        claudeDesktopSessionEnabled = userDefaults.bool(forKey: "com.aiquota.claudeDesktopSessionEnabled")
         self.historyStore = historyStore
         loadSettings()
         historyStore.load()
@@ -81,6 +83,11 @@ final class QuotaStore: ObservableObject {
         providers[provider.id] = provider
     }
 
+    func setClaudeDesktopSessionEnabled(_ enabled: Bool) {
+        claudeDesktopSessionEnabled = enabled
+        userDefaults.set(enabled, forKey: "com.aiquota.claudeDesktopSessionEnabled")
+    }
+
     func getProvider(_ id: ProviderID) -> QuotaProviderProtocol? {
         providers[id]
     }
@@ -102,6 +109,7 @@ final class QuotaStore: ObservableObject {
             }
             if let current = snapshots[id], !current.windows.isEmpty,
                snapshot.observedAt < current.observedAt {
+                if let warning = snapshot.warning { throw AppError.quotaRefreshWarning(warning) }
                 throw AppError.olderQuotaSample
             }
             let updated = snapshot.aged()
@@ -110,6 +118,7 @@ final class QuotaStore: ObservableObject {
             }
             historyStore.record(snapshot: updated)
             snapshots[id] = updated
+            errors[id] = updated.warning
             persistSnapshot(updated)
         } catch {
             if let existing = snapshots[id] {
