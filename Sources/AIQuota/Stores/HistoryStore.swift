@@ -4,8 +4,16 @@ final class HistoryStore: @unchecked Sendable {
     private var snapshots: [TrendPoint] = []
     private let queue = DispatchQueue(label: "com.aiquota.history", qos: .utility)
     private var lastHeartbeat: [String: Date] = [:]
+    private let storageURL: URL?
+    private let desktopHistoryURL: URL?
+
+    init(storageURL: URL? = nil, desktopHistoryURL: URL? = nil) {
+        self.storageURL = storageURL
+        self.desktopHistoryURL = desktopHistoryURL
+    }
 
     private var storeURL: URL {
+        if let storageURL { return storageURL }
         let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
         let appSupport = paths[0].appendingPathComponent("AIQuota", isDirectory: true)
         try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
@@ -51,7 +59,7 @@ final class HistoryStore: @unchecked Sendable {
     }
 
     func importClaudeDesktopHistory() {
-        let path = FileManager.default.homeDirectoryForCurrentUser
+        let path = desktopHistoryURL ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/Claude/plan-usage-history.json")
         guard let data = try? Data(contentsOf: path),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
