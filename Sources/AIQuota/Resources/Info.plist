@@ -7,15 +7,19 @@
     <key>CFBundleName</key>
     <string>AIQuota</string>
     <key>CFBundleDisplayName</key>
-    <string>Quota Monitor</string>
+    <string>AI-Quota</string>
     <key>CFBundleIdentifier</key>
     <string>com.opencode.aiquota</string>
     <key>CFBundleVersion</key>
-    <string>1.0.0</string>
+    <string>1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
+    <string>0.1.0</string>
     <key>CFBundleExecutable</key>
     <string>AIQuota</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleInfoDictionaryVersion</key>

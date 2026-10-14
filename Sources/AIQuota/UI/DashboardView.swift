@@ -151,7 +151,7 @@ struct DashboardView: View {
 
             Spacer()
 
-            Text("v1.0.0b")
+            Text("v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development")")
                 .font(.system(size: 10))
                 .foregroundStyle(.white.opacity(0.2))
         }

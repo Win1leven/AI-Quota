@@ -308,15 +308,15 @@ struct SettingsView: View {
 
     private var aboutTab: some View {
         VStack(spacing: 12) {
-            Image(systemName: "chart.pie.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(.tint)
+            Image(nsImage: NSApplication.shared.applicationIconImage)
+                .resizable()
+                .frame(width: 48, height: 48)
 
-            Text("Quota Monitor")
+            Text("AI-Quota")
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Version 1.0.0b")
+            Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "local"))")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
@@ -330,7 +330,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Privacy")
                         .font(.system(size: 11, weight: .semibold))
-                    Text("This app does not collect, save, or transmit any personal data, credentials, conversation content, or project files. All data is stored locally.")
+                    Text("Quota snapshots and usage statistics are saved locally. Local token statistics read usage fields from session files. Codex uses its existing login for provider requests. Claude desktop login access is off by default; enabling it sends the necessary session cookie only to claude.ai for usage. Credentials are not saved by AI-Quota. Chat content is not uploaded.")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -356,7 +356,7 @@ struct SettingsView: View {
 
     private func copyDiagnosticSummary() {
         var lines: [String] = []
-        lines.append("Quota Monitor v1.0.0b")
+        lines.append("AI-Quota v\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "local"))")
         lines.append("macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         lines.append("")
         for id in ProviderID.allCases {
