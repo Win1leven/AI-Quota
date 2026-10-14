@@ -4,11 +4,14 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
     let id = ProviderID.claude
     private let homeDirectory: URL
     private let supportDirectory: URL
+    private let desktopUsage: (@Sendable () async throws -> Data)?
 
     init(homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
-         supportDirectory: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("AIQuota")) {
+         supportDirectory: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("AIQuota"),
+         desktopUsage: (@Sendable () async throws -> Data)? = nil) {
         self.homeDirectory = homeDirectory
         self.supportDirectory = supportDirectory
+        self.desktopUsage = desktopUsage
     }
 
     var isAvailable: Bool {
@@ -31,6 +34,16 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
 
     func refresh() async throws -> QuotaSnapshot {
         let now = Date()
+        var warning: String?
+        var desktopError: ClaudeDesktopUsageService.DesktopError?
+        if let desktopUsage {
+            do {
+                return try parseOAuthUsage(data: await desktopUsage(), now: Date())
+            } catch {
+                desktopError = (error as? ClaudeDesktopUsageService.DesktopError) ?? .requestFailed
+                warning = desktopError?.errorDescription
+            }
+        }
 
         let collector = try? Data(contentsOf: collectorPath)
         let desktop = try? Data(contentsOf: desktopHistoryPath)
@@ -39,16 +52,24 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
 
         // An active collector carries reset times that desktop history cannot provide.
         if let collectorSnapshot, now.timeIntervalSince(collectorSnapshot.observedAt) <= 900 {
-            return collectorSnapshot
+            return addingWarning(warning, to: collectorSnapshot)
         }
         if let latest = [collectorSnapshot, desktopSnapshot].compactMap({ $0 })
             .max(by: { $0.observedAt < $1.observedAt }) {
-            return latest
+            return addingWarning(warning, to: latest)
         }
         if collectorFileExists() || desktopHistoryFileExists() {
+            if let desktopError { throw desktopError }
             throw AppError.claudeNoSnapshot
         }
+        if let desktopError { throw desktopError }
         return QuotaSnapshot(provider: .claude, windows: [], observedAt: now, receivedAt: now, freshness: collectorConfigured ? .unknown : .notConfigured)
+    }
+
+    private func addingWarning(_ warning: String?, to snapshot: QuotaSnapshot) -> QuotaSnapshot {
+        QuotaSnapshot(provider: snapshot.provider, windows: snapshot.windows,
+            observedAt: snapshot.observedAt, receivedAt: snapshot.receivedAt,
+            freshness: snapshot.freshness, source: snapshot.source, warning: warning)
     }
 
     func isInstalledAndLoggedIn() async -> Bool {
@@ -71,7 +92,10 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
 
         var windows: [QuotaWindow] = []
         if let fiveHour = json["five_hour"] as? [String: Any],
-           let used = (fiveHour["utilization"] as? NSNumber)?.doubleValue {
+           let number = fiveHour["utilization"] as? NSNumber,
+           CFGetTypeID(number) != CFBooleanGetTypeID(),
+           number.doubleValue.isFinite, (0...100).contains(number.doubleValue) {
+            let used = number.doubleValue
             windows.append(QuotaWindow(
                 type: .fiveHour,
                 durationMinutes: 300,
@@ -83,7 +107,10 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
         }
 
         if let sevenDay = json["seven_day"] as? [String: Any],
-           let used = (sevenDay["utilization"] as? NSNumber)?.doubleValue {
+           let number = sevenDay["utilization"] as? NSNumber,
+           CFGetTypeID(number) != CFBooleanGetTypeID(),
+           number.doubleValue.isFinite, (0...100).contains(number.doubleValue) {
+            let used = number.doubleValue
             windows.append(QuotaWindow(
                 type: .weekly,
                 durationMinutes: 10_080,
@@ -97,7 +124,7 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
         guard !windows.isEmpty else {
             throw AppError.claudeNoSnapshot
         }
-        return QuotaSnapshot(provider: .claude, windows: windows, observedAt: now, receivedAt: now, freshness: .live)
+        return QuotaSnapshot(provider: .claude, windows: windows, observedAt: now, receivedAt: now, freshness: .live, source: .claudeDesktopSession)
     }
 
     private func parseISO8601(_ value: String?) -> Date? {

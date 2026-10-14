@@ -189,7 +189,7 @@ struct ServiceCardView: View {
                     }
                 }
             } else {
-                Text(snapshot.freshness == .notConfigured ? "Configure collector in Settings" : "Waiting for a Claude Code sample")
+                Text(snapshot.freshness == .notConfigured ? "Enable desktop usage or collector in Settings" : "Waiting for a Claude usage sample")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.3))
             }

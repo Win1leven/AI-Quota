@@ -90,12 +90,14 @@ enum DataFreshness: String, Codable, Sendable {
 enum QuotaSource: String, Codable, Sendable {
     case claudeCollector
     case claudeDesktop
+    case claudeDesktopSession
     case codexCLI
 
     var displayName: String {
         switch self {
         case .claudeCollector: return "Claude Code sample"
         case .claudeDesktop: return "Desktop history · reset unknown"
+        case .claudeDesktopSession: return "Claude desktop account"
         case .codexCLI: return "Codex CLI"
         }
     }
@@ -109,6 +111,7 @@ struct QuotaSnapshot: Identifiable, Codable, Sendable {
     let receivedAt: Date
     let freshness: DataFreshness
     let source: QuotaSource?
+    let warning: String?
 
     init(
         provider: ProviderID,
@@ -116,7 +119,8 @@ struct QuotaSnapshot: Identifiable, Codable, Sendable {
         observedAt: Date = Date(),
         receivedAt: Date = Date(),
         freshness: DataFreshness = .live,
-        source: QuotaSource? = nil
+        source: QuotaSource? = nil,
+        warning: String? = nil
     ) {
         self.id = "\(provider.rawValue)-\(receivedAt.timeIntervalSince1970)"
         self.provider = provider
@@ -125,6 +129,7 @@ struct QuotaSnapshot: Identifiable, Codable, Sendable {
         self.receivedAt = receivedAt
         self.freshness = freshness
         self.source = source
+        self.warning = warning
     }
 
     func aged(at now: Date = Date()) -> QuotaSnapshot {
@@ -142,7 +147,7 @@ struct QuotaSnapshot: Identifiable, Codable, Sendable {
             state = freshness
         }
         return QuotaSnapshot(provider: provider, windows: windows, observedAt: observedAt,
-                             receivedAt: receivedAt, freshness: state, source: source)
+                             receivedAt: receivedAt, freshness: state, source: source, warning: warning)
     }
 
     var primaryWindow: QuotaWindow? {
@@ -285,6 +290,7 @@ struct UsageAnalytics: Codable, Sendable, Identifiable {
 }
 
 enum AppError: LocalizedError {
+    case quotaRefreshWarning(String)
     case olderQuotaSample
     case codexNotFound
     case codexNotLoggedIn
@@ -299,6 +305,7 @@ enum AppError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .quotaRefreshWarning(let message): return message
         case .olderQuotaSample:
             return "Only an older sample is available. Keeping the last known quota; check the collector in Settings."
         case .codexNotFound:
@@ -320,9 +327,9 @@ enum AppError: LocalizedError {
             }
             return "Codex error: \(msg)"
         case .claudeNotConfigured:
-            return "Claude collector not configured."
+            return "Enable Claude desktop usage or the optional Code collector in Settings."
         case .claudeNoSnapshot:
-            return "No snapshot yet. Complete one Claude Code response."
+            return "No valid Claude sample yet. Open desktop usage or use the optional Code collector."
         case .claudeConfigConflict(let path):
             return "Claude config conflict. Backup at: \(path)"
         case .providerUnavailable(let name):

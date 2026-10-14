@@ -148,6 +148,24 @@ struct SettingsView: View {
     private var claudeTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                Text("Claude Desktop Usage")
+                    .font(.headline)
+                Toggle("Read quota and reset times from desktop login", isOn: Binding(
+                    get: { store.claudeDesktopSessionEnabled },
+                    set: { store.setClaudeDesktopSessionEnabled($0) }
+                ))
+                .font(.system(size: 12))
+                Text("Opt-in: reads the local Claude login through Keychain and requests only claude.ai usage. Credentials are not saved. If unavailable, local history remains cached with reset unknown.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if store.claudeDesktopSessionEnabled, let error = store.errors[.claude] {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 Text("Claude Code Status Line Collector")
                     .font(.headline)
 

@@ -46,3 +46,18 @@ G2 PR: https://github.com/Win1leven/AI-Quota/pull/3 (stacked on G1). Native sett
 Current acceptance boundaries: source/fixtures and live configuration migration verified; next Claude activity sample, a real reset boundary and remaining native UI checks remain. Configuration migration changed only statusLine, with a saved original field and no auth/permission changes. Never publish personal sample values or credentials in this progress record.
 
 Next live acceptance: complete a normal response in Claude Code, then refresh Claude in the app. Compare five-hour/seven-day windows and supplied reset dates to Claude's usage display in the same time period. If rate_limits or resets are absent, retain cached/unknown state; do not fabricate them. Leave the session idle and verify the sample timestamp remains fixed while freshness ages. Use Restore Original Config to undo installation if needed; it refuses conflicting statusLine edits.
+
+## G4 — Desktop-only usage and reset support (2026-10-13)
+
+- [x] Clarify desktop-only requirement; desktop replies do not invoke Claude Code statusLine.
+- [x] Verify desktop history is updating and current provider reads it; it records utilization only, not resets.
+- [x] Confirm the running installed app was older than the repaired source; replace it with a tested local build and preserve the original application backup.
+- [x] User explicitly authorizes reuse of the local desktop login solely for Claude usage requests.
+- [x] Add opt-in desktop session access through native SQLite/Keychain/CommonCrypto, restricted to the necessary session/organization cookies and fixed HTTPS usage endpoint. No credential persistence, chat transmission, dependency or release configuration changes.
+- [x] Real request succeeds without Claude Code activity: both quota windows and their reset timestamps are supplied. App setting enabled with user authorization; native settings show desktop account source and live sample; stored snapshot contains both resets.
+- [x] 21 focused provider/crypto/request/opt-in/store tests pass. Independent review exposed a recovery-message overwrite; two synthetic tests reproduce it and pass after the minimal fix.
+- [ ] Observe an actual reset boundary and finish remaining menu/floating-panel UI interactions.
+
+Security receipt: secrets stay in memory; only the fixed claude.ai usage GET uses the session cookie. URLSession is ephemeral, disables cookie storage/cache and refuses redirects. Cookie database is opened read-only and queries only sessionKey/lastActiveOrg for .claude.ai. Decryption validates host binding on current Chromium storage. Unknown format, denied Keychain access, missing fields, HTTP rejection and network failure preserve local history or the last good snapshot with a safe recovery message. The private API and desktop cookie format may change; this is a personal development build, not a public release.
+
+Desktop-only acceptance supersedes the earlier requirement to send a Claude Code reply. The statusLine collector remains optional and reversible. No personal sample values, organization IDs or credentials are included in this receipt.

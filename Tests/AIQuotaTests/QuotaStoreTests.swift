@@ -4,6 +4,35 @@ import Testing
 
 @MainActor
 struct QuotaStoreTests {
+    @Test func expiredDesktopSessionKeepsNewerSnapshotAndRecoveryHint() async throws {
+        let fixture = try StoreFiles()
+        let claude = try ClaudeFiles()
+        defer { fixture.remove(); claude.remove() }
+        let observed = Date().addingTimeInterval(-10)
+        let store = fixture.store()
+        store.snapshots[.claude] = QuotaSnapshot(provider: .claude,
+            windows: [QuotaWindow(type: .weekly, durationMinutes: 10080, usedPercent: 45,
+                remainingPercent: nil, resetsAt: Date(timeIntervalSince1970: 1900500000), observedAt: observed)],
+            observedAt: observed, source: .claudeDesktopSession)
+        try claude.history(used: 40, time: observed.timeIntervalSince1970 - 100)
+        store.registerProvider(ClaudeQuotaProvider(homeDirectory: claude.root, supportDirectory: claude.support,
+            desktopUsage: { throw ClaudeDesktopUsageService.DesktopError.unauthorized }))
+        await store.refresh(.claude)
+        #expect(store.claudeSnapshot?.source == .claudeDesktopSession)
+        #expect(store.claudeSnapshot?.primaryWindow?.usedPercent == 45)
+        #expect(store.claudeSnapshot?.primaryWindow?.resetsAt != nil)
+        #expect(store.errors[.claude] == ClaudeDesktopUsageService.DesktopError.unauthorized.errorDescription)
+    }
+    @Test @MainActor func desktopSessionAccessIsOptInAndPersistsAcrossRestart() throws {
+        let fixture = try StoreFiles()
+        defer { fixture.remove() }
+        let store = fixture.store()
+        #expect(!store.claudeDesktopSessionEnabled)
+        store.setClaudeDesktopSessionEnabled(true)
+        #expect(fixture.store().claudeDesktopSessionEnabled)
+        store.setClaudeDesktopSessionEnabled(false)
+        #expect(!fixture.store().claudeDesktopSessionEnabled)
+    }
     @Test func lowestMenuModeIncludesWeeklyConstraint() throws {
         let fixture = try StoreFiles()
         defer { fixture.remove() }
