@@ -82,7 +82,9 @@ Verification: 31 focused tests in five suites pass, including delayed RPC replie
 - [x] 52 synthetic tests / 8 suites pass. Universal release build, minos 13.0, system dependencies and ad-hoc signature verified.
 - [x] DMG checksum/mount/Applications link/guide/temp install and ZIP byte equality pass.
 - [x] Isolated Apple Silicon startup finishes and stays alive for 8 seconds with real-home and network access denied; no production configuration changed.
-- [ ] Merge verified feature PRs and beta packaging PR into main.
-- [ ] Publish v0.1.0-beta.1 assets and verify anonymous download hashes.
+- [x] Merge verified feature PRs #2–#5 and beta packaging PR #6 into main.
+- [x] Publish v0.1.0-beta.1 assets and verify anonymous download hashes.
 
 No Developer ID / notarization available; beta clearly documents first-launch approval. Intel and macOS 13 runtime checks, real reset-boundary acceptance and automatic update/startup are not claimed. Release receipt: docs/releases/v0.1.0-beta.1.md.
+
+Published receipt: https://github.com/Win1leven/AI-Quota/releases/tag/v0.1.0-beta.1 . Tag points to 71f523e5eccc985912efe384f336a049540aeec8; its source tree matches the frozen build commit 90f7d088af3559f7c35ac7298331278578becd80. Anonymous downloads of DMG, ZIP and SHA256SUMS all succeed and match local SHA256. Build/package/startup/public-download receipts remain in ignored dist/; no user data is published.
