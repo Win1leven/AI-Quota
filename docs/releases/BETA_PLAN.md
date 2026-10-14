@@ -9,7 +9,7 @@
 - [x] README 中文首页，docs/USAGE.zh-CN.md 安装/两种 Claude 来源/桌面胶囊/刷新/缓存/卸载；docs/releases/v0.1.0-beta.1.md 列出环境、验证、残余边界。
 - [x] 修正 About 中旧固定版本和过度隐私宣称，复用 Bundle 信息与现有图标，不改变凭据访问行为。
 - [x] 构建两架构；验证 Mach-O 版本、依赖、签名、图标、DMG 与 ZIP 内容一致且无私有数据；临时复制安装到干净目录并验证。对干净账户启动使用隔离文件/网络环境，不影响当前运行应用及真实配置。
-- [ ] 请求独立发布差异审查；修复 P1/P2 后顺序合并 PR #2→#5，发布差异另建 PR 并合并。
-- [ ] 在最终 main 提交上创建 v0.1.0-beta.1 tag 与 GitHub prerelease，附 DMG/ZIP/SHA256SUMS；匿名 API 与下载校验，更新 Issue #1 和项目进度。
+- [x] 请求独立发布差异审查；修复 P1/P2 后顺序合并 PR #2→#5，发布差异另建 PR 并合并。
+- [x] 在最终 main 提交上创建 v0.1.0-beta.1 tag 与 GitHub prerelease，附 DMG/ZIP/SHA256SUMS；匿名 API 与下载校验，更新 Issue #1 和项目进度。
 
 约束：不新增依赖，不改 CI，不上传凭据、个人使用历史或产品推广视频。Claude 桌面会话功能默认关闭，用户自行选择开启。Codex CLI 是数据源依赖；可选 Claude Code collector 需要 python3，桌面方式无需它。Intel 仅编译及静态验证，实际运行验证仅本机 Apple Silicon。真实重置边界仍是后续接受项。

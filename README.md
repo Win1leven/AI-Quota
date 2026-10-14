@@ -4,6 +4,10 @@
 
 一个原生 macOS 菜单栏与桌面胶囊工具，把 **Codex 和 Claude 的剩余额度、重置时间、数据来源与采样时间** 放在一起看。
 
+<p align="center"><img src="docs/images/product-overview.png" width="880" alt="AI-Quota 产品示意：Codex 与 Claude 双服务额度、重置时间和缓存标记"></p>
+
+<p align="center"><sub>宣传示意图（AI 生成，参考原生界面组件）；额度和日期均为虚构演示数据，实际显示以服务返回及当前版本为准。</sub></p>
+
 ## 直接下载安装
 
 **首个测试版：v0.1.0-beta.1 · macOS 13+ · Apple Silicon / Intel 通用包**
