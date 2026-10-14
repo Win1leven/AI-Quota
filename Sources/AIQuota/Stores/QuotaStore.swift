@@ -27,6 +27,7 @@ final class QuotaStore: ObservableObject {
         self.historyStore = historyStore
         loadSettings()
         historyStore.load()
+        historyStore.setRetentionDays(settings.historyRetentionDays)
         historyStore.importClaudeDesktopHistory()
         loadSnapshots()
         loadAnalytics()
@@ -147,11 +148,14 @@ final class QuotaStore: ObservableObject {
     }
 
     func refreshAll() async {
+        await refreshQuotas()
+        await refreshAnalyticsAll()
+    }
+
+    func refreshQuotas() async {
         async let codex: Void = refresh(.codex)
         async let claude: Void = refresh(.claude)
         _ = await (codex, claude)
-        // Analytics are heavier (network), run after quota so UI shows quickly
-        await refreshAnalyticsAll()
     }
 
     func manualRefreshCodex() async {
@@ -242,6 +246,19 @@ final class QuotaStore: ObservableObject {
     }
 
     var menuBarText: String {
+        if settings.menuBarMode == .lowestOnly {
+            let candidates = snapshots.values.flatMap { snapshot in
+                snapshot.windows.compactMap { window -> (QuotaSnapshot, QuotaWindow, Double)? in
+                    guard let remaining = window.remainingPercent else { return nil }
+                    return (snapshot, window, remaining)
+                }
+            }
+            if let lowest = candidates.min(by: { $0.2 < $1.2 }) {
+                let prefix = lowest.0.provider == .codex ? "CX" : "CL"
+                let marker = lowest.0.aged().freshness == .live ? "" : "~"
+                return "\(prefix) \(lowest.1.type.displayName) \(marker)\(Int(lowest.2.rounded()))%"
+            }
+        }
         let parts = ProviderID.allCases.compactMap { id -> String? in
             guard let snapshot = snapshots[id] else { return nil }
             let prefix = id == .codex ? "CX" : "CL"
@@ -253,7 +270,7 @@ final class QuotaStore: ObservableObject {
         if parts.isEmpty {
             return "CX -- · CL --"
         }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: settings.menuBarMode == .compact ? " / " : " · ")
     }
 
     var menuBarTooltip: String {
@@ -280,7 +297,13 @@ final class QuotaStore: ObservableObject {
         if let data = try? JSONEncoder().encode(settings) {
             userDefaults.set(data, forKey: settingsKey)
         }
+        historyStore.setRetentionDays(settings.historyRetentionDays)
         startPeriodicRefresh()
+    }
+
+    func clearHistory() throws {
+        try historyStore.clearAll()
+        objectWillChange.send()
     }
 
     // MARK: - Freeze detection (wake from sleep)

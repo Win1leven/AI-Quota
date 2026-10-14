@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import Combine
 
 @MainActor
 final class FloatingPanel: NSObject {
@@ -7,6 +8,7 @@ final class FloatingPanel: NSObject {
     private let store: QuotaStore
     private let onClose: () -> Void
     private let defaultsKey = "com.aiquota.floatingPanel.frame"
+    private var settingsSubscription: AnyCancellable?
 
     init(store: QuotaStore, onClose: @escaping () -> Void) {
         self.store = store
@@ -28,7 +30,7 @@ final class FloatingPanel: NSObject {
         if store.settings.showOnAllSpaces {
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         } else {
-            panel.collectionBehavior = [.canJoinAllSpaces]
+            panel.collectionBehavior = []
         }
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
@@ -56,6 +58,15 @@ final class FloatingPanel: NSObject {
         restoreFrame(panel)
 
         self.window = panel
+        settingsSubscription = store.$settings
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyWindowSettings() }
+    }
+
+    private func applyWindowSettings() {
+        window?.level = store.settings.alwaysOnTop ? .floating : .normal
+        window?.collectionBehavior = store.settings.showOnAllSpaces ? [.canJoinAllSpaces, .fullScreenAuxiliary] : []
     }
 
     private func toggleCompact() {
@@ -190,11 +201,11 @@ struct FloatingPanelContentView: View {
                                 isLoading: store.isLoading.contains(provider),
                                 isLoadingAnalytics: store.isLoadingAnalytics.contains(provider),
                                 error: store.errors[provider],
-                                trendRange: .fiveHours,
+                                trendRange: store.settings.defaultTrendRange,
                                 trendPoints: store.trendPoints(
                                     for: provider,
                                     windowType: store.snapshots[provider]?.primaryWindow?.type,
-                                    range: .fiveHours
+                                    range: store.settings.defaultTrendRange
                                 )
                             )
                         }
@@ -268,7 +279,7 @@ struct FloatingPanelContentView: View {
                 .padding(.horizontal, 8)
 
             if store.snapshots[.codex] != nil {
-                MiniBarChart(dataPoints: store.trendPoints(for: .codex, windowType: store.codexSnapshot?.primaryWindow?.type, range: .fiveHours), accentColor: .cyan)
+                MiniBarChart(dataPoints: store.trendPoints(for: .codex, windowType: store.codexSnapshot?.primaryWindow?.type, range: store.settings.defaultTrendRange), accentColor: .cyan)
                     .frame(height: 40)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 4)
