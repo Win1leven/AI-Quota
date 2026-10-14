@@ -36,11 +36,7 @@ final class ClaudeAnalyticsService: @unchecked Sendable {
             }
         }()
 
-        // Try to enrich from Anthropic API if OAuth token available (best effort, ignore failure)
-        if let apiAnalytics = try? await fetchAnthropicUsageIfAvailable() {
-            return apiAnalytics
-        }
-
+        // Local analytics never probe credentials or make provider requests.
         return UsageAnalytics(
             provider: .claude,
             capturedAt: Date(),
@@ -159,61 +155,5 @@ final class ClaudeAnalyticsService: @unchecked Sendable {
             }
         }
         return total
-    }
-
-    // MARK: - Anthropic private usage (best effort)
-    private func fetchAnthropicUsageIfAvailable() async throws -> UsageAnalytics? {
-        // Look for OAuth token in keychain is complex; try reading from Claude Code's token file via CLI helper
-        // For now, probe a local endpoint: if `claude` CLI can dump usage, use it
-        // Fallback: try calling https://api.anthropic.com/api/organizations/usage with token from auth if found
-        let token = try? loadClaudeOAuthToken()
-        guard let token else { return nil }
-
-        let url = URL(string: "https://api.anthropic.com/api/organizations/usage?limit=30")!
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let arr = json["data"] as? [[String: Any]] else {
-            return nil
-        }
-        // Aggregate last 7 days
-        var total = 0; var daily: [DailyUsage] = []
-        for row in arr.prefix(7) {
-            let date = (row["date"] as? String) ?? ""
-            let toks = (row["tokens"] as? Int) ?? ((row["input_tokens"] as? Int) ?? 0) + ((row["output_tokens"] as? Int) ?? 0)
-            total += toks
-            daily.append(DailyUsage(date: date, credits: 0, cachedInputTokens: 0, uncachedInputTokens: toks, outputTokens: 0, turns: 0))
-        }
-        let weekly = total // if last 7 days already weekly
-        return UsageAnalytics(
-            provider: .claude,
-            capturedAt: Date(),
-            cycleStartDate: nil,
-            creditsUsed: 0,
-            tokensUsed: total,
-            inputTokens: total,
-            outputTokens: 0,
-            daily: daily,
-            projectedWeeklyCredits: nil,
-            projectedWeeklyTokens: weekly,
-            projectedWeeklyUSD: Double(weekly) / 1_000_000 * usdPerMFreshInput,
-            primaryUsedPercent: nil
-        )
-    }
-
-    private func loadClaudeOAuthToken() throws -> String {
-        // Try keychain via `security` is slow; try reading from Claude Code's internal storage via process
-        // Check if `claude` CLI can output token (undocumented)
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = ["-c", "security find-generic-password -s 'Claude Code-credentials' -a rc -w 2>/dev/null | head -c 2000"]
-        let pipe = Pipe(); proc.standardOutput = pipe
-        try? proc.run(); proc.waitUntilExit()
-        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        if out.contains("sk-ant-") { return out.trimmingCharacters(in: .whitespacesAndNewlines) }
-        throw AppError.claudeNotConfigured
     }
 }

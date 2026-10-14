@@ -4,7 +4,7 @@ struct Diagnostics {
     @MainActor static func summary(store: QuotaStore) -> String {
         var lines: [String] = []
         lines.append("=== Quota Monitor Diagnostic Summary ===")
-        lines.append("Version: 1.0.0b")
+        lines.append("Version: \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development") (\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "local"))")
         lines.append("macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)")
         lines.append("")
 

@@ -73,3 +73,16 @@ Desktop-only acceptance supersedes the earlier requirement to send a Claude Code
 - [x] Settings window observed after capsule Settings menu interaction; the standard Cmd+comma route also works. Full details expose one labeled compact toggle and a separate close action.
 
 Verification: 31 focused tests in five suites pass, including delayed RPC replies, initialization, response/exit ordering, helper failure, legacy settings decoding, limiting-window selection and explicit-null waiting boundaries. Independent review identified I/O races, published-settings timing and false waiting states; all were reproduced/fixed and reviewed again. No dependency, credential scope, CI or release configuration changes. The tested development app replaces the installed binary with a recoverable application backup. A real reset boundary remains a future acceptance item. Do not publish personal quota samples.
+
+## G6 — First public downloadable beta (2026-10-14)
+
+- [x] User authorizes icon, integration, Chinese documentation, packaging and prerelease publication.
+- [x] Independent review of stacked features and release diff; obsolete Claude credential probe removed, inaccurate privacy/old version labels corrected.
+- [x] New cyan/mint quota-ring icon, Chinese README and usage guide; standard macOS bundle icon.
+- [x] 52 synthetic tests / 8 suites pass. Universal release build, minos 13.0, system dependencies and ad-hoc signature verified.
+- [x] DMG checksum/mount/Applications link/guide/temp install and ZIP byte equality pass.
+- [x] Isolated Apple Silicon startup finishes and stays alive for 8 seconds with real-home and network access denied; no production configuration changed.
+- [ ] Merge verified feature PRs and beta packaging PR into main.
+- [ ] Publish v0.1.0-beta.1 assets and verify anonymous download hashes.
+
+No Developer ID / notarization available; beta clearly documents first-launch approval. Intel and macOS 13 runtime checks, real reset-boundary acceptance and automatic update/startup are not claimed. Release receipt: docs/releases/v0.1.0-beta.1.md.

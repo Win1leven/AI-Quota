@@ -57,3 +57,12 @@ Global module index was checked; no existing global Swift quota/collector module
 
 - Native synthetic drag events may change event coordinates without updating global mouseLocation. Convert each event through its window into screen coordinates; verify click and drag separately.
 - Reuse the SwiftUI-generated settings menu action when the legacy AppKit selector no longer opens the settings scene.
+
+## Public beta release — 2026-10-14
+
+- User explicitly authorized repository visibility (2026-10-13), and icon/integration/downloadable beta publication (2026-10-14). Current repository is public.
+- Packaging reuses build.sh / make-dmg.sh, creating new-source Universal app, ad-hoc signature, DMG, ZIP and checksum under ignored dist/. Resources/AppIcon.png and AppIcon.icns are source assets. No CI or external dependencies added.
+- Legacy Claude analytics credential/network probing removed; local usage-field statistics remain. Desktop session access scope and opt-in remain unchanged. Accurate About privacy text replaces the former blanket no-data claim.
+- A local valid code signature is not Apple notarization. Document Gatekeeper opening and test actual DMG/ZIP installation rather than claim download readiness from compilation alone.
+- Use an independent temporary Bundle ID and CFFIXED_USER_HOME with blocked network/real-home access for startup smoke; changing ordinary HOME alone is not sufficient evidence of macOS preference isolation. Never overwrite the installed app during package tests.
+- Deployment-floor and Universal compilation are static evidence; they do not establish Intel/macOS-minimum runtime compatibility.
