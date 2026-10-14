@@ -3,6 +3,39 @@ import Testing
 @testable import AIQuota
 
 struct QuotaProviderTests {
+    @Test func waitingStateRequiresExplicitNullFromDesktop() throws {
+        for field in ["", ",\"resets_at\":\"not-a-date\"", ",\"resets_at\":123"] {
+            let json = "{\"five_hour\":{\"utilization\":0\(field)}}"
+            let sample = try ClaudeQuotaProvider().parseOAuthUsage(data: Data(json.utf8), now: Date())
+            #expect(!sample.isAwaitingFirstClaudeMessage)
+        }
+    }
+
+    @Test func backendQuotaFailureDoesNotRecommendChangingLogin() {
+        #expect(AppError.codexApiError("Failed to fetch usage").errorDescription?.contains("codex login") == false)
+        #expect(AppError.codexApiError("Unauthorized usage request").errorDescription?.contains("codex login") == true)
+    }
+    @Test func waitingStateRequiresAuthoritativeZeroUsageAndAbsentReset() {
+        for source: QuotaSource in [.claudeDesktop, .claudeCollector, .codexCLI] {
+            let window = QuotaWindow(type: .fiveHour, durationMinutes: 300, usedPercent: 0, remainingPercent: nil, resetsAt: nil)
+            #expect(!QuotaSnapshot(provider: .claude, windows: [window], source: source).isAwaitingFirstClaudeMessage)
+        }
+        for window in [
+            QuotaWindow(type: .fiveHour, durationMinutes: 300, usedPercent: 5, remainingPercent: nil, resetsAt: nil),
+            QuotaWindow(type: .fiveHour, durationMinutes: 300, usedPercent: 0, remainingPercent: nil, resetsAt: Date().addingTimeInterval(3600))
+        ] {
+            #expect(!QuotaSnapshot(provider: .claude, windows: [window], source: .claudeDesktopSession).isAwaitingFirstClaudeMessage)
+        }
+    }
+    @Test func desktopZeroUsageWithNullFiveHourResetRemainsUnknown() throws {
+        let sample = try ClaudeQuotaProvider().parseOAuthUsage(data: Data(#"{"five_hour":{"utilization":0,"resets_at":null},"seven_day":{"utilization":45,"resets_at":"2030-01-07T12:00:00Z"}}"#.utf8), now: Date())
+        #expect(sample.windows.count == 2)
+        #expect(sample.primaryWindow?.type == .fiveHour)
+        #expect(sample.primaryWindow?.usedPercent == 0)
+        #expect(sample.primaryWindow?.resetsAt == nil)
+        #expect(sample.windows.first(where: { $0.type == .weekly })?.resetsAt != nil)
+        #expect(sample.isAwaitingFirstClaudeMessage)
+    }
     @Test func desktopSessionWithoutFallbackKeepsActionableError() async throws {
         let fixture = try ClaudeFiles()
         defer { fixture.remove() }

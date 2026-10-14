@@ -45,3 +45,15 @@ Global module index was checked; no existing global Swift quota/collector module
 - Desktop session access is disabled by default and persisted separately from legacy settings. Only Claude's sessionKey/lastActiveOrg cookies and its named Safe Storage key are read. Secrets stay in memory; requests go only to the fixed claude.ai usage endpoint, with cookies/caching/redirects disabled in the transport.
 - Cookie decryption uses native platform libraries. Unknown encryption or Keychain failures preserve local history and expose a safe warning. No external dependency, release configuration change or UI redesign.
 - Private desktop API and cookie storage are compatibility risks; public release needs further review, explicit opt-in and rollback/fallback.
+
+## Desktop capsule decision and lessons — 2026-10-13
+
+- User approved direction B after comparing three visual directions: a compact capsule with both services visible. Contract: docs/design/bubble-assistant-contract.md. Default for existing installations remains menu bar only.
+- UI/DesktopAssistant.swift reuses QuotaStore and the existing details/settings windows; no separate quota collector or timer. Settings changes apply the newly published value directly.
+- Capsule quota is the minimum known remaining percentage across windows; unknown data is never converted to zero or fabricated.
+- App-server initialization is a protocol handshake, not a fixed sleep. Keep stdin open through the response, serialize writes/cleanup, and drain stdout before reporting process exit.
+- A null five-hour reset with zero usage can mean the window is waiting for its first message. Require explicit provider metadata; parser failure or missing fields cannot establish inactivity.
+- Verify the installed binary, settings entry, details and drag interactions separately; passing source tests does not establish native UI behavior.
+
+- Native synthetic drag events may change event coordinates without updating global mouseLocation. Convert each event through its window into screen coordinates; verify click and drag separately.
+- Reuse the SwiftUI-generated settings menu action when the legacy AppKit selector no longer opens the settings scene.

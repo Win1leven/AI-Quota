@@ -159,23 +159,15 @@ struct FloatingPanelContentView: View {
 
                 if compact {
                     compactContent
-                } else {
-                    Button(action: onToggleCompact) {
-                        Image(systemName: "arrow.down.right.and.arrow.up.left")
-                            .font(.system(size: 10))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.4))
-                    .help("Compact mode")
                 }
 
                 Button(action: onToggleCompact) {
-                    Image(systemName: compact ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                        .font(.system(size: 10))
+                    Text(compact ? "展开详情" : "紧凑视图")
+                        .font(.system(size: 11))
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.4))
-                .help(compact ? "Expand" : "Compact")
+                .help(compact ? "展开完整额度详情" : "切换为紧凑视图")
 
                 Button(action: onClose) {
                     Image(systemName: "xmark")

@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var floatingPanel: FloatingPanel?
+    private var desktopAssistant: DesktopAssistant?
     private var isPopoverShown = false
     private var cancellables = Set<AnyCancellable>()
 
@@ -36,7 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
         store.$settings
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateStatusItemText() }
+            .sink { [weak self] _ in
+                self?.updateStatusItemText()
+                self?.applyDisplayMode()
+            }
             .store(in: &cancellables)
         store.$isLoading
             .receive(on: RunLoop.main)
@@ -58,6 +62,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func registerProviders() {
         store.registerProvider(CodexQuotaProvider())
         registerClaudeProvider(desktopSessionEnabled: store.claudeDesktopSessionEnabled)
+    }
+
+    private func applyDisplayMode() {
+        let mode = store.settings.effectiveDisplayMode
+        statusItem?.isVisible = mode != .desktopOnly
+        if mode == .menuBarOnly {
+            desktopAssistant?.close()
+            desktopAssistant = nil
+        } else if desktopAssistant == nil {
+            desktopAssistant = DesktopAssistant(store: store,
+                onOpen: { [weak self] in
+                    if let panel = self?.floatingPanel { panel.bringToFront() }
+                    else { self?.fixDashboard() }
+                },
+                onSettings: { [weak self] in self?.handleSettings() })
+        }
     }
 
     private func registerClaudeProvider(desktopSessionEnabled: Bool) {
@@ -199,7 +219,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.performClose(nil)
             isPopoverShown = false
         }
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.activate(ignoringOtherApps: true)
+        if let menu = NSApp.mainMenu?.items.compactMap(\.submenu).first(where: {
+            $0.items.contains { $0.keyEquivalent == "," && $0.keyEquivalentModifierMask.contains(.command) }
+        }), let index = menu.items.firstIndex(where: {
+            $0.keyEquivalent == "," && $0.keyEquivalentModifierMask.contains(.command)
+        }) {
+            menu.performActionForItem(at: index)
+        } else {
+            NSApp.sendAction(Selector("showSettingsWindow:"), to: nil, from: nil)
+        }
         if #available(macOS 14, *) {
             NSApp.keyWindow?.orderFrontRegardless()
         }

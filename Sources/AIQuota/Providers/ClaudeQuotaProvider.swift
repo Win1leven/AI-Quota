@@ -102,7 +102,8 @@ final class ClaudeQuotaProvider: QuotaProviderProtocol, @unchecked Sendable {
                 usedPercent: used,
                 remainingPercent: nil,
                 resetsAt: parseISO8601(fiveHour["resets_at"] as? String),
-                observedAt: now
+                observedAt: now,
+                resetStartsAfterMessage: used == 0 && fiveHour["resets_at"] is NSNull
             ))
         }
 
